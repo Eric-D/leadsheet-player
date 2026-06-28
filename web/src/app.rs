@@ -697,9 +697,9 @@ impl eframe::App for App {
                 .response
                 .rect;
 
-            // Big metronome beat number, PAINTED at the right of the header bar
-            // (no layout space taken → the grid's width is untouched). Red on the
-            // downbeat.
+            // Big metronome beat number, PAINTED in the empty top-right corner
+            // (no layout space taken → the grid's width is untouched), on a
+            // foreground layer so nothing overdraws it. Red on the downbeat.
             {
                 let beats = 4u32;
                 let beat = (current_tick / (TICKS_PER_BAR / beats)) % beats;
@@ -710,11 +710,16 @@ impl eframe::App for App {
                 } else {
                     Color32::from_gray(220)
                 };
-                ui.painter().text(
-                    egui::pos2(ui.max_rect().right() - 16.0, header_rect.center().y),
+                let pos = egui::pos2(ui.max_rect().right() - 24.0, header_rect.center().y + 40.0);
+                let painter = ui.ctx().layer_painter(egui::LayerId::new(
+                    egui::Order::Foreground,
+                    egui::Id::new("beat_counter"),
+                ));
+                painter.text(
+                    pos,
                     egui::Align2::RIGHT_CENTER,
                     format!("{}", beat + 1),
-                    egui::FontId::proportional(44.0),
+                    egui::FontId::proportional(50.0),
                     col,
                 );
             }
