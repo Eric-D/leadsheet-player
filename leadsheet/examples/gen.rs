@@ -55,7 +55,8 @@ fn main() {
         ],
         vec![(1, 1), (5, 2)],
         (1, 8, 2),
-        (0..8).map(|b| note(b * 4, [60, 64, 65, 67, 60, 64, 65, 67][b as usize])).collect(),
+        // Melody expanded over the 2 choruses (16 bars) so playback repeats too.
+        (0..16).map(|b| note(b * 4, [60, 64, 65, 67, 60, 64, 65, 67][(b % 8) as usize])).collect(),
     );
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     std::fs::write(root.join("web/demo.mgu"), encode(&demo)).unwrap();

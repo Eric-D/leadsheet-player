@@ -310,7 +310,23 @@ impl AudioEngine {
         let cells = chord_cells(song);
         self.form_ticks = cells.iter().map(|(s, d, _)| s + d).max().unwrap_or(0);
         let accompaniment = (parts.chords_on || parts.bass_on) && self.form_ticks > 0;
-        self.end_tick = if accompaniment { melody_end.max(self.form_ticks) } else { melody_end };
+
+        // Honour the chorus repeat (×N) in playback, like the chart does: the
+        // linear performance is intro + chorus×choruses + ending bars. Used as a
+        // floor so the accompaniment loops the right number of times even when
+        // the melody isn't stored expanded over the choruses.
+        let bar = leadsheet::TICKS_PER_BAR;
+        let cb = song.chorus_begin.max(1) as u32;
+        let ce = song.chorus_end.max(song.chorus_begin).max(1) as u32;
+        let form_bars = (song.form_bars as u32).max(ce);
+        let clen = (ce + 1 - cb).max(1);
+        let perform = ((cb - 1) + clen * song.choruses.max(1) as u32 + (form_bars - ce)) * bar;
+
+        self.end_tick = if accompaniment {
+            melody_end.max(self.form_ticks).max(perform)
+        } else {
+            melody_end
+        };
 
         self.build_pending(song, parts, start_tick);
         // Realise everything due in the first ~1.5 s immediately so playback is
