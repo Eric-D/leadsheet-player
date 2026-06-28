@@ -730,10 +730,16 @@ pub fn encode(song: &Song) -> Vec<u8> {
     let mut out = Vec::new();
     // Header: version, title, two reserved bytes, style (0=4/4 → +1), key, BPM.
     out.push(0x49);
-    let title = song.title.as_bytes();
-    let tlen = title.len().min(255);
-    out.push(tlen as u8);
-    out.extend_from_slice(&title[..tlen]);
+    // Title is stored as Latin-1 (1 byte/char), matching how `parse` reads it —
+    // not UTF-8, otherwise accents come back as mojibake ("Démo" → "DÃ©mo").
+    let title: Vec<u8> = song
+        .title
+        .chars()
+        .map(|c| if (c as u32) <= 0xFF { c as u8 } else { b'?' })
+        .take(255)
+        .collect();
+    out.push(title.len() as u8);
+    out.extend_from_slice(&title);
     out.push(0);
     out.push(0);
     out.push(1);

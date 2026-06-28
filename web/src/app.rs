@@ -486,10 +486,9 @@ impl eframe::App for App {
                 }
                 ui.separator();
 
-                // Big, finger-friendly transport buttons (used on tablets/phones).
-                let big = |label: &str| {
-                    egui::Button::new(RichText::new(label).size(18.0)).min_size(egui::vec2(58.0, 38.0))
-                };
+                // Finger-friendly transport buttons (global narrow-screen sizing
+                // adds the padding; avoid a forced min width that breaks wrapping).
+                let big = |label: &str| egui::Button::new(RichText::new(label).size(20.0));
                 let has_song = self.song.is_some();
                 ui.add_enabled_ui(has_song, |ui| {
                     // Use geometric glyphs that the bundled font actually renders
@@ -911,20 +910,32 @@ impl eframe::App for App {
                 } else {
                     Color32::from_gray(220)
                 };
-                let top = header_rect.top();
-                let bottom = tabs_rect.bottom();
-                let cx = ui.max_rect().right() - 28.0;
                 let painter = ui.ctx().layer_painter(egui::LayerId::new(
                     egui::Order::Foreground,
                     egui::Id::new("beat_counter"),
                 ));
-                painter.text(
-                    egui::pos2(cx, (top + bottom) * 0.5),
-                    egui::Align2::RIGHT_CENTER,
-                    format!("{}", beat + 1),
-                    egui::FontId::proportional((bottom - top).clamp(28.0, 110.0)),
-                    col,
-                );
+                let num = format!("{}", beat + 1);
+                if ui.ctx().screen_rect().width() < 600.0 {
+                    // Phones: a small number in the top-right corner so it never
+                    // covers the title/tabs.
+                    painter.text(
+                        egui::pos2(ui.max_rect().right() - 10.0, header_rect.top() + 2.0),
+                        egui::Align2::RIGHT_TOP,
+                        num,
+                        egui::FontId::proportional(32.0),
+                        col,
+                    );
+                } else {
+                    // Wide screens: big number spanning the header block.
+                    let (top, bottom) = (header_rect.top(), tabs_rect.bottom());
+                    painter.text(
+                        egui::pos2(ui.max_rect().right() - 28.0, (top + bottom) * 0.5),
+                        egui::Align2::RIGHT_CENTER,
+                        num,
+                        egui::FontId::proportional((bottom - top).clamp(28.0, 110.0)),
+                        col,
+                    );
+                }
             }
             ui.separator();
 
