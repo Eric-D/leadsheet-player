@@ -320,6 +320,16 @@ fn volume_slider(ui: &mut egui::Ui, label: &str, v: &mut f32) -> bool {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // On phones (narrow screens), enlarge touch targets & spacing so buttons
+        // and the library are comfortable to tap.
+        if ctx.screen_rect().width() < 600.0 {
+            ctx.style_mut(|s| {
+                s.spacing.button_padding = egui::vec2(9.0, 8.0);
+                s.spacing.interact_size.y = 34.0;
+                s.spacing.item_spacing = egui::vec2(8.0, 8.0);
+            });
+        }
+
         // Create the audio context up front so the page's touch handler can
         // resume() it (mobile browsers only unlock audio inside a real gesture).
         self.ensure_audio();
@@ -659,37 +669,44 @@ impl eframe::App for App {
                         .color(Color32::from_gray(140)),
                 );
 
-                // ☁ Shared space (Supabase) — the QR/link carries the whole config.
+                // ☁ Shared space (Supabase) — the QR/link carries the whole
+                // config. Full-width fields so it's usable on a phone.
                 egui::CollapsingHeader::new("☁ Espace partagé (synchro)").show(ui, |ui| {
-                    egui::Grid::new("cloud_cfg").num_columns(2).show(ui, |ui| {
-                        ui.label("URL Supabase");
-                        ui.text_edit_singleline(&mut self.cloud.url);
-                        ui.end_row();
-                        ui.label("Clé publishable")
-                            .on_hover_text("clé sb_publishable_… (ou anon). PAS la clé secrète !");
-                        ui.text_edit_singleline(&mut self.cloud.anon);
-                        ui.end_row();
-                        ui.label("Clé d'espace");
-                        ui.horizontal(|ui| {
-                            ui.text_edit_singleline(&mut self.cloud.space);
-                            if ui.button("🎲").on_hover_text("Nouvel espace (clé aléatoire)").clicked() {
-                                cl_newkey = true;
-                            }
-                        });
-                        ui.end_row();
+                    let wide = f32::INFINITY;
+                    ui.label(RichText::new("URL Supabase").small());
+                    ui.add(egui::TextEdit::singleline(&mut self.cloud.url).desired_width(wide).hint_text("https://xxxx.supabase.co"));
+                    ui.label(RichText::new("Clé publishable (sb_publishable_…)").small());
+                    ui.add(egui::TextEdit::singleline(&mut self.cloud.anon).desired_width(wide));
+                    if self.cloud.anon.starts_with("sb_secret_") {
+                        ui.label(
+                            RichText::new("⚠️ C'est la clé SECRÈTE ! Mets la clé publishable — la secrète donne un accès total et serait exposée dans le QR.")
+                                .color(Color32::from_rgb(225, 70, 55)).small(),
+                        );
+                    }
+                    ui.label(RichText::new("Clé d'espace").small());
+                    ui.horizontal(|ui| {
+                        if ui.button("🎲").on_hover_text("Nouvel espace (clé aléatoire)").clicked() {
+                            cl_newkey = true;
+                        }
+                        ui.add(egui::TextEdit::singleline(&mut self.cloud.space).desired_width(wide));
                     });
+                    ui.add_space(4.0);
                     ui.horizontal_wrapped(|ui| {
                         if ui.button("💾 Enregistrer").clicked() {
                             cl_save = true;
                         }
                         let on = self.cloud.is_set();
+                        let secret = self.cloud.anon.starts_with("sb_secret_");
                         if ui.add_enabled(on, egui::Button::new("⬇ Récupérer")).clicked() {
                             cl_pull = true;
                         }
                         if ui.add_enabled(on, egui::Button::new("⬆ Envoyer")).clicked() {
                             cl_push = true;
                         }
-                        if ui.add_enabled(on, egui::Button::new("🔗 Partager (QR)")).clicked() {
+                        if ui.add_enabled(on && !secret, egui::Button::new("🔗 Partager (QR)"))
+                            .on_hover_text(if secret { "Désactivé : clé secrète" } else { "Lien + QR" })
+                            .clicked()
+                        {
                             self.show_qr = !self.show_qr;
                         }
                     });
@@ -699,8 +716,8 @@ impl eframe::App for App {
                     if self.show_qr && self.cloud.is_set() {
                         let url = cloud::share_url(&self.cloud);
                         ui.add_space(4.0);
-                        cloud::draw_qr(ui, &url, 230.0);
-                        ui.label(RichText::new("Scanne ce QR pour ouvrir cet espace sur un autre appareil.").small());
+                        let qr = (ui.available_width() - 12.0).clamp(140.0, 240.0);
+                        cloud::draw_qr(ui, &url, qr);
                         if ui.button("📋 Copier le lien").clicked() {
                             ui.ctx().copy_text(url);
                         }
@@ -732,41 +749,47 @@ impl eframe::App for App {
                     for e in &view {
                         let title = if e.title.is_empty() { &e.name } else { &e.title };
                         ui.horizontal(|ui| {
-                            if ui.button("▶").on_hover_text("Charger").clicked() {
+                            // Big load button (tap target).
+                            if ui
+                                .add(egui::Button::new(RichText::new("▶").size(18.0)).min_size(egui::vec2(42.0, 38.0)))
+                                .on_hover_text("Charger")
+                                .clicked()
+                            {
                                 load_lib = Some((e.id, e.name.clone()));
                             }
-                            if ui.button("✏").on_hover_text("Renommer").clicked() {
-                                start_rename = Some((e.id, title.clone()));
-                            }
-                            if ui.button("🗑").on_hover_text("Supprimer").clicked() {
-                                del_lib = Some(e.id);
-                            }
-                            // Inline rename field for the selected entry.
                             match &mut self.renaming {
                                 Some((rid, buf)) if *rid == e.id => {
                                     let r = ui.add(
-                                        egui::TextEdit::singleline(buf).desired_width(110.0),
+                                        egui::TextEdit::singleline(buf).desired_width(f32::INFINITY),
                                     );
-                                    let go = ui.button("✓").clicked()
-                                        || (r.lost_focus()
-                                            && ui.input(|i| i.key_pressed(egui::Key::Enter)));
-                                    if go {
+                                    if ui.button("✓").clicked()
+                                        || (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
+                                    {
                                         commit_rename = Some((e.id, buf.clone()));
                                     }
                                 }
                                 _ => {
-                                    ui.vertical(|ui| {
-                                        ui.label(RichText::new(title).strong());
-                                        ui.label(
-                                            RichText::new(format!(
-                                                "{} · {} BPM · {}",
-                                                if e.key.is_empty() { "?" } else { &e.key },
-                                                e.tempo,
-                                                if e.style.is_empty() { "—" } else { &e.style }
-                                            ))
-                                            .small()
-                                            .color(Color32::from_gray(140)),
-                                        );
+                                    // Edit/delete pinned right; title + meta fill the middle.
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        if ui.button("🗑").on_hover_text("Supprimer").clicked() {
+                                            del_lib = Some(e.id);
+                                        }
+                                        if ui.button("✏").on_hover_text("Renommer").clicked() {
+                                            start_rename = Some((e.id, title.clone()));
+                                        }
+                                        ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                                            ui.label(RichText::new(title).strong());
+                                            ui.label(
+                                                RichText::new(format!(
+                                                    "{} · {} BPM · {}",
+                                                    if e.key.is_empty() { "?" } else { &e.key },
+                                                    e.tempo,
+                                                    if e.style.is_empty() { "—" } else { &e.style }
+                                                ))
+                                                .small()
+                                                .color(Color32::from_gray(140)),
+                                            );
+                                        });
                                     });
                                 }
                             }
