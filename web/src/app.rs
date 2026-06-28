@@ -454,14 +454,16 @@ impl eframe::App for App {
                 };
                 let has_song = self.song.is_some();
                 ui.add_enabled_ui(has_song, |ui| {
+                    // Use geometric glyphs that the bundled font actually renders
+                    // (the media symbols ⏸/⏹ show as tofu boxes).
                     if self.playing {
-                        if ui.add(big("⏸")).on_hover_text("Pause").clicked() {
+                        if ui.add(big("▌▌")).on_hover_text("Pause").clicked() {
                             self.pause();
                         }
                     } else if ui.add(big("▶")).on_hover_text("Lecture").clicked() {
                         self.play();
                     }
-                    if ui.add(big("⏹")).on_hover_text("Stop").clicked() {
+                    if ui.add(big("■")).on_hover_text("Stop").clicked() {
                         self.stop();
                     }
                 });
@@ -611,12 +613,17 @@ impl eframe::App for App {
             }
             v
         };
-        egui::SidePanel::left("library_panel")
+        let mut lib_open = self.show_library;
+        egui::Window::new("📚 Bibliothèque")
+            .open(&mut lib_open)
+            .collapsible(false)
             .resizable(true)
-            .default_width(245.0)
-            .show_animated(ctx, self.show_library, |ui| {
-                ui.add_space(6.0);
-                ui.heading("📚 Bibliothèque");
+            .default_size([
+                ctx.screen_rect().width() * 0.94,
+                ctx.screen_rect().height() * 0.85,
+            ])
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
                 ui.label(
                     RichText::new("Stockée dans ce navigateur (hors-ligne).")
                         .small()
@@ -689,6 +696,7 @@ impl eframe::App for App {
                     }
                 });
             });
+        self.show_library = lib_open;
         if let Some(pair) = start_rename {
             self.renaming = Some(pair);
         }
@@ -698,6 +706,7 @@ impl eframe::App for App {
         }
         if let Some((id, name)) = load_lib {
             library::load(id, name, self.inbox.clone(), ctx.clone());
+            self.show_library = false; // close the library once a song is picked
         }
         if let Some(id) = del_lib {
             library::remove_song(id, self.library_inbox.clone(), ctx.clone());
