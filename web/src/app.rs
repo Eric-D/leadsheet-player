@@ -490,13 +490,13 @@ impl eframe::App for App {
                     // Use geometric glyphs that the bundled font actually renders
                     // (the media symbols ⏸/⏹ show as tofu boxes).
                     if self.playing {
-                        if ui.add(big("▌▌")).on_hover_text("Pause").clicked() {
+                        if ui.add(big("⏸")).on_hover_text("Pause").clicked() {
                             self.pause();
                         }
                     } else if ui.add(big("▶")).on_hover_text("Lecture").clicked() {
                         self.play();
                     }
-                    if ui.add(big("■")).on_hover_text("Stop").clicked() {
+                    if ui.add(big("⏹")).on_hover_text("Stop").clicked() {
                         self.stop();
                     }
                 });
