@@ -454,28 +454,18 @@ impl eframe::App for App {
                     ui.label(format!("≈ {bpm} BPM"));
 
                     ui.separator();
-                    // Beat counter: just the current beat, big, in a red disc
-                    // (brighter on the downbeat). Like a metronome readout.
+                    // Beat counter: just the current beat, big (red on the downbeat).
                     let beats = 4u32;
                     let unit = TICKS_PER_BAR / beats; // ticks per beat
                     let beat = (play_tick / unit) % beats;
-                    let (rect, _) = ui.allocate_exact_size(egui::Vec2::splat(30.0), egui::Sense::hover());
-                    let p = ui.painter_at(rect);
-                    let fill = if !self.playing {
-                        Color32::from_gray(70)
+                    let col = if !self.playing {
+                        Color32::from_gray(110)
                     } else if beat == 0 {
-                        Color32::from_rgb(228, 55, 55) // downbeat = bright red
+                        Color32::from_rgb(228, 55, 55) // downbeat = red
                     } else {
-                        Color32::from_rgb(150, 48, 48)
+                        Color32::from_gray(210)
                     };
-                    p.circle_filled(rect.center(), 14.0, fill);
-                    p.text(
-                        rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        format!("{}", beat + 1),
-                        egui::FontId::proportional(18.0),
-                        Color32::WHITE,
-                    );
+                    ui.label(RichText::new(format!("{}", beat + 1)).size(24.0).strong().color(col));
 
                     // Elapsed-time clock (MM:SS).
                     let actual_bpm = (s.tempo_bpm as f32 * self.tempo_factor).max(1.0) as f64;
