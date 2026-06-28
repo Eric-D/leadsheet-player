@@ -654,8 +654,11 @@ impl eframe::App for App {
             .open(&mut lib_open)
             .collapsible(false)
             .resizable(false)
-            .fixed_size([ctx.screen_rect().width(), ctx.screen_rect().height()])
-            .anchor(egui::Align2::LEFT_TOP, [0.0, 0.0])
+            .fixed_size([
+                ctx.screen_rect().width() - 20.0,
+                ctx.screen_rect().height() - 20.0,
+            ])
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
                 // Easy-to-reach close button (the title-bar ✕ sits in the
                 // rounded screen corner and is hard to tap on phones).
