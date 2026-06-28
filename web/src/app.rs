@@ -42,6 +42,8 @@ pub struct App {
     /// Raw bytes of the currently-loaded song (so it can be saved to the library).
     current_bytes: Option<Vec<u8>>,
     playing: bool,
+    /// egui time of the last seek, to debounce rapid chord clicks.
+    last_seek_t: f64,
     error: Option<String>,
 }
 
@@ -73,6 +75,7 @@ impl App {
             renaming: None,
             current_bytes: None,
             playing: false,
+            last_seek_t: 0.0,
             error: None,
         };
         // Load the bundled original demo so the app isn't empty on first run.
@@ -753,7 +756,13 @@ impl eframe::App for App {
         });
 
         if let Some(tick) = seek_tick {
-            self.seek_to_tick(tick);
+            // Debounce: absorb rapid repeated clicks on the same chord so we
+            // don't pile up reschedules (which used to garble the audio).
+            let now = ctx.input(|i| i.time);
+            if now - self.last_seek_t > 0.10 {
+                self.last_seek_t = now;
+                self.seek_to_tick(tick);
+            }
         }
     }
 }

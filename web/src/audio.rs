@@ -69,6 +69,10 @@ pub struct AudioEngine {
     chd_bus: GainNode,
     bas_bus: GainNode,
     voices: Vec<(OscillatorNode, GainNode)>,
+    /// Previous batch, kept one cycle so it can be fully disconnected after its
+    /// fade — guarantees no node buildup across rapid reschedules (seeking by
+    /// clicking a chord many times).
+    dying: Vec<(OscillatorNode, GainNode)>,
     /// ctx time of the schedule origin.
     origin: f64,
     /// Song tick that maps to `origin` (the seek point).
@@ -104,6 +108,7 @@ impl AudioEngine {
             chd_bus,
             bas_bus,
             voices: Vec::new(),
+            dying: Vec::new(),
             origin: 0.0,
             origin_tick: 0,
             sec_per_tick: 0.0,
@@ -251,14 +256,21 @@ impl AudioEngine {
         // Ramp each voice to silence over a few ms before stopping, so cutting
         // playback (tempo change, seek, stop) doesn't produce a click/pop.
         let t = self.ctx.current_time();
+        // The batch faded out by the previous clear() is now silent: stop and
+        // DISCONNECT it for good, so nothing accumulates across rapid clicks.
+        for (osc, gain) in self.dying.drain(..) {
+            let _ = osc.stop_with_when(t);
+            let _ = osc.disconnect();
+            let _ = gain.disconnect();
+        }
         for (osc, gain) in self.voices.drain(..) {
             let g = gain.gain();
             let _ = g.cancel_scheduled_values(t);
             let _ = g.set_value_at_time(g.value(), t);
             let _ = g.linear_ramp_to_value_at_time(0.0001, t + 0.012);
-            // Stop slightly after the ramp; the node is GC'd once stopped.
-            // (No immediate disconnect — that would cut sound before the fade.)
+            // Stop after the fade; the node is disconnected on the next clear().
             let _ = osc.stop_with_when(t + 0.02);
+            self.dying.push((osc, gain));
         }
         self.scheduled = false;
     }
