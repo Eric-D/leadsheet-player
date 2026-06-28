@@ -303,6 +303,10 @@ fn volume_slider(ui: &mut egui::Ui, label: &str, v: &mut f32) -> bool {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Create the audio context up front so the page's touch handler can
+        // resume() it (mobile browsers only unlock audio inside a real gesture).
+        self.ensure_audio();
+
         // Drain any file picked asynchronously (file dialog OR library load).
         let pending = self.inbox.borrow_mut().take();
         if let Some((name, bytes)) = pending {

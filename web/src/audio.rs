@@ -105,6 +105,16 @@ fn midi_to_freq(pitch: u8) -> f32 {
 impl AudioEngine {
     pub fn new() -> Option<Self> {
         let ctx = AudioContext::new().ok()?;
+        // Expose the context so the page can resume() it from a real touch/click
+        // handler — mobile browsers (iPad/Safari) only start audio in a gesture,
+        // and egui processes clicks in the render loop, outside that gesture.
+        if let Some(win) = web_sys::window() {
+            let _ = js_sys::Reflect::set(
+                &win,
+                &wasm_bindgen::JsValue::from_str("__audioCtx"),
+                ctx.as_ref(),
+            );
+        }
         let master = ctx.create_gain().ok()?;
         master.gain().set_value(0.9);
         master.connect_with_audio_node(&ctx.destination()).ok()?;

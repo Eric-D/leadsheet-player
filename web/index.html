@@ -30,6 +30,21 @@
       });
     </script>
     <script>
+      // Unlock Web Audio on mobile: the AudioContext (exposed by the app as
+      // window.__audioCtx) may only start inside a real user gesture, so resume
+      // it on the first touch/click/key — egui handles input later in the render
+      // loop, which is outside the gesture on iPad/Safari.
+      (function () {
+        function unlock() {
+          var c = window.__audioCtx;
+          if (c && c.state !== "running") c.resume();
+        }
+        ["touchstart", "touchend", "pointerdown", "mousedown", "click", "keydown"].forEach(
+          function (ev) { window.addEventListener(ev, unlock, true); }
+        );
+      })();
+    </script>
+    <script>
       // Register the service worker for offline / installable PWA.
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () =>
