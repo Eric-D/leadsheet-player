@@ -656,10 +656,10 @@ impl eframe::App for App {
         egui::Window::new("📚 Bibliothèque")
             .open(&mut lib_open)
             .collapsible(false)
-            .resizable(true)
-            .default_size([
+            .resizable(false)
+            .fixed_size([
                 ctx.screen_rect().width() * 0.94,
-                ctx.screen_rect().height() * 0.85,
+                ctx.screen_rect().height() * 0.9,
             ])
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
@@ -745,7 +745,7 @@ impl eframe::App for App {
                         .color(Color32::from_gray(150)),
                     );
                 }
-                egui::ScrollArea::vertical().show(ui, |ui| {
+                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                     for e in &view {
                         let title = if e.title.is_empty() { &e.name } else { &e.title };
                         ui.horizontal(|ui| {
