@@ -296,8 +296,8 @@ impl AudioEngine {
         let beat_dur = PPQ as f64 * self.sec_per_tick; // one beat
         let lead = self.ctx.current_time() + 0.12;
         if count_in {
-            // "boom — boom —  :  bom bom bom", the strong booms accented.
-            for &(b, accent) in &[(0.0, true), (2.0, true), (4.0, false), (5.0, false), (6.0, false)] {
+            // Classic count-off: "1 — 2 —" then "1 2 3 4", the two "1"s accented.
+            for &(b, accent) in &[(0.0, true), (2.0, false), (4.0, true), (5.0, false), (6.0, false), (7.0, false)] {
                 self.kick(lead + b * beat_dur, accent);
             }
             self.origin = lead + 8.0 * beat_dur;
