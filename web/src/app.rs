@@ -458,31 +458,6 @@ impl eframe::App for App {
                 }
                 if library::available() {
                     ui.toggle_value(&mut self.show_library, "📚 Bibliothèque");
-                    // Save the currently-loaded song into the local library.
-                    let can_add = self.current_bytes.is_some() && self.song.is_some();
-                    if ui
-                        .add_enabled(can_add, egui::Button::new("💾 Ajouter"))
-                        .on_hover_text("Enregistrer dans la bibliothèque (ce navigateur)")
-                        .clicked()
-                    {
-                        if let (Some(bytes), Some(song)) = (&self.current_bytes, &self.song) {
-                            let key = format!(
-                                "{}{}",
-                                parser::pitch_class_name(song.key_pc),
-                                if song.key_minor { "m" } else { "" }
-                            );
-                            library::save_song(
-                                self.file_name.clone(),
-                                bytes.clone(),
-                                song.title.clone(),
-                                key,
-                                song.tempo_bpm,
-                                song.style.clone(),
-                                self.library_inbox.clone(),
-                                ctx.clone(),
-                            );
-                        }
-                    }
                 }
                 ui.separator();
 
@@ -630,6 +605,7 @@ impl eframe::App for App {
         let mut commit_rename: Option<(f64, String)> = None;
         let mut start_rename: Option<(f64, String)> = None;
         let (mut cl_save, mut cl_pull, mut cl_push, mut cl_newkey) = (false, false, false, false);
+        let mut do_add = false;
         // Filtered + sorted snapshot, so the closure doesn't borrow self.library.
         let view: Vec<LibEntry> = {
             let q = self.library_search.to_lowercase();
@@ -664,6 +640,16 @@ impl eframe::App for App {
                         .small()
                         .color(Color32::from_gray(140)),
                 );
+
+                // Add the currently-loaded song to the library.
+                let can_add = self.current_bytes.is_some() && self.song.is_some();
+                if ui
+                    .add_enabled(can_add, egui::Button::new("💾 Ajouter le morceau courant"))
+                    .clicked()
+                {
+                    do_add = true;
+                }
+                ui.add_space(2.0);
 
                 // ☁ Shared space (Supabase) — the QR/link carries the whole
                 // config. Full-width fields so it's usable on a phone.
@@ -795,6 +781,25 @@ impl eframe::App for App {
                 });
             });
         self.show_library = lib_open;
+        if do_add {
+            if let (Some(bytes), Some(song)) = (&self.current_bytes, &self.song) {
+                let key = format!(
+                    "{}{}",
+                    parser::pitch_class_name(song.key_pc),
+                    if song.key_minor { "m" } else { "" }
+                );
+                library::save_song(
+                    self.file_name.clone(),
+                    bytes.clone(),
+                    song.title.clone(),
+                    key,
+                    song.tempo_bpm,
+                    song.style.clone(),
+                    self.library_inbox.clone(),
+                    ctx.clone(),
+                );
+            }
+        }
         if cl_newkey {
             self.cloud.space = cloud::random_key();
             cl_save = true;
