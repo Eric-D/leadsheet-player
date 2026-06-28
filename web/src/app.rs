@@ -700,8 +700,10 @@ impl eframe::App for App {
                         let url = cloud::share_url(&self.cloud);
                         ui.add_space(4.0);
                         cloud::draw_qr(ui, &url, 230.0);
-                        ui.label(RichText::new("Scanne ce QR (ou partage le lien) pour ouvrir cet espace ailleurs.").small());
-                        ui.label(RichText::new(&url).small().monospace().color(Color32::from_gray(130)));
+                        ui.label(RichText::new("Scanne ce QR pour ouvrir cet espace sur un autre appareil.").small());
+                        if ui.button("📋 Copier le lien").clicked() {
+                            ui.ctx().copy_text(url);
+                        }
                     }
                 });
                 ui.separator();
