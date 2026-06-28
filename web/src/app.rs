@@ -307,6 +307,24 @@ impl eframe::App for App {
         // resume() it (mobile browsers only unlock audio inside a real gesture).
         self.ensure_audio();
 
+        // Discreet build stamp (bottom-right) so you can tell which version a
+        // device actually loaded — set by CI, "dev" for local builds.
+        {
+            let build = option_env!("BUILD_INFO").unwrap_or("dev");
+            let r = ctx.screen_rect();
+            ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Foreground,
+                egui::Id::new("build_info"),
+            ))
+            .text(
+                r.right_bottom() - egui::vec2(5.0, 3.0),
+                egui::Align2::RIGHT_BOTTOM,
+                build,
+                egui::FontId::monospace(10.0),
+                Color32::from_gray(95),
+            );
+        }
+
         // Drain any file picked asynchronously (file dialog OR library load).
         let pending = self.inbox.borrow_mut().take();
         if let Some((name, bytes)) = pending {

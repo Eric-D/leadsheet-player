@@ -41,6 +41,7 @@ jobs:
       - name: Build (public URL = the project's Pages sub-path)
         run: |
           cd web
+          export BUILD_INFO="$(date -u +%Y-%m-%d\ %H:%M) ${GITHUB_SHA:0:7}"
           trunk build --release --public-url "/${GITHUB_REPOSITORY#*/}/"
           touch dist/.nojekyll
 
