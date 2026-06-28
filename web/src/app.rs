@@ -697,32 +697,6 @@ impl eframe::App for App {
                 .response
                 .rect;
 
-            // Big metronome beat number, PAINTED in the empty top-right corner
-            // (no layout space taken → the grid's width is untouched), on a
-            // foreground layer so nothing overdraws it. Red on the downbeat.
-            {
-                let beats = 4u32;
-                let beat = (current_tick / (TICKS_PER_BAR / beats)) % beats;
-                let col = if !self.playing {
-                    Color32::from_gray(110)
-                } else if beat == 0 {
-                    Color32::from_rgb(228, 55, 55)
-                } else {
-                    Color32::from_gray(220)
-                };
-                let pos = egui::pos2(ui.max_rect().right() - 24.0, header_rect.center().y + 40.0);
-                let painter = ui.ctx().layer_painter(egui::LayerId::new(
-                    egui::Order::Foreground,
-                    egui::Id::new("beat_counter"),
-                ));
-                painter.text(
-                    pos,
-                    egui::Align2::RIGHT_CENTER,
-                    format!("{}", beat + 1),
-                    egui::FontId::proportional(50.0),
-                    col,
-                );
-            }
             let structure = if song.form_bars > 0 {
                 let loop_part = if song.choruses > 1 {
                     format!(
@@ -749,13 +723,46 @@ impl eframe::App for App {
             );
             ui.add_space(6.0);
 
-            ui.horizontal(|ui| {
-                ui.selectable_value(&mut self.view, View::Chart, "🎼 Grille d'accords");
-                ui.selectable_value(&mut self.view, View::Staff, "𝄞 Partition");
-                ui.selectable_value(&mut self.view, View::Tab, "🎸 Tablature");
-                ui.separator();
-                ui.toggle_value(&mut self.show_chords, "🎸 Diagrammes");
-            });
+            let tabs_rect = ui
+                .horizontal(|ui| {
+                    ui.selectable_value(&mut self.view, View::Chart, "🎼 Grille d'accords");
+                    ui.selectable_value(&mut self.view, View::Staff, "𝄞 Partition");
+                    ui.selectable_value(&mut self.view, View::Tab, "🎸 Tablature");
+                    ui.separator();
+                    ui.toggle_value(&mut self.show_chords, "🎸 Diagrammes");
+                })
+                .response
+                .rect;
+
+            // Big metronome beat number on the right, spanning the whole header
+            // block (title line → tabs). Painted on a foreground layer so it
+            // takes no layout space (the grid keeps its width) and nothing
+            // overdraws it. Red on the downbeat.
+            {
+                let beats = 4u32;
+                let beat = (current_tick / (TICKS_PER_BAR / beats)) % beats;
+                let col = if !self.playing {
+                    Color32::from_gray(110)
+                } else if beat == 0 {
+                    Color32::from_rgb(228, 55, 55)
+                } else {
+                    Color32::from_gray(220)
+                };
+                let top = header_rect.top();
+                let bottom = tabs_rect.bottom();
+                let cx = ui.max_rect().right() - 28.0;
+                let painter = ui.ctx().layer_painter(egui::LayerId::new(
+                    egui::Order::Foreground,
+                    egui::Id::new("beat_counter"),
+                ));
+                painter.text(
+                    egui::pos2(cx, (top + bottom) * 0.5),
+                    egui::Align2::RIGHT_CENTER,
+                    format!("{}", beat + 1),
+                    egui::FontId::proportional((bottom - top).clamp(28.0, 110.0)),
+                    col,
+                );
+            }
             ui.separator();
 
             // Thin playback progress bar over the whole song. Click to seek.
