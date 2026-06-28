@@ -33,18 +33,23 @@
       });
     </script>
     <script>
-      // Unlock Web Audio on mobile: the AudioContext (exposed by the app as
-      // window.__audioCtx) may only start inside a real user gesture, so resume
-      // it on the first touch/click/key — egui handles input later in the render
-      // loop, which is outside the gesture on iPad/Safari.
+      // Unlock Web Audio on mobile ONCE: the AudioContext (exposed by the app as
+      // window.__audioCtx) may only start inside a real user gesture. We resume
+      // it on the first interaction, then remove the listeners — otherwise we'd
+      // re-resume on every touch and undo Pause (suspend()) immediately.
       (function () {
+        var evs = ["touchstart", "touchend", "pointerdown", "mousedown", "click", "keydown"];
+        var done = false;
         function unlock() {
+          if (done) return;
           var c = window.__audioCtx;
-          if (c && c.state !== "running") c.resume();
+          if (c) {
+            try { c.resume(); } catch (e) {}
+            done = true;
+            evs.forEach(function (ev) { window.removeEventListener(ev, unlock, true); });
+          }
         }
-        ["touchstart", "touchend", "pointerdown", "mousedown", "click", "keydown"].forEach(
-          function (ev) { window.addEventListener(ev, unlock, true); }
-        );
+        evs.forEach(function (ev) { window.addEventListener(ev, unlock, true); });
       })();
     </script>
     <script>
