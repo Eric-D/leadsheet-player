@@ -68,7 +68,9 @@ pub struct AudioEngine {
     mel_bus: GainNode,
     chd_bus: GainNode,
     bas_bus: GainNode,
-    voices: Vec<(OscillatorNode, GainNode)>,
+    /// Live voices with their end time, so finished ones can be pruned — only a
+    /// few seconds of notes exist at once (mobile audio caps the node count).
+    voices: Vec<(OscillatorNode, GainNode, f64)>,
     /// Previous batch, kept one cycle so it can be fully disconnected after its
     /// fade — guarantees no node buildup across rapid reschedules (seeking by
     /// clicking a chord many times).
@@ -101,6 +103,10 @@ struct PendingNote {
 fn midi_to_freq(pitch: u8) -> f32 {
     440.0 * 2f32.powf((pitch as f32 - 69.0) / 12.0)
 }
+
+/// Seconds of notes kept scheduled ahead of the playhead. Small enough to bound
+/// the live audio-node count (mobile-safe), large enough to absorb frame drops.
+const LOOKAHEAD: f64 = 6.0;
 
 impl AudioEngine {
     pub fn new() -> Option<Self> {
@@ -160,7 +166,7 @@ impl AudioEngine {
         self.ramp(&self.bas_bus.gain(), bass);
     }
 
-    fn osc(&self, bus: &GainNode, freq: f32, start: f64, dur: f64, peak: f32, instr: &Instrument) -> Option<(OscillatorNode, GainNode)> {
+    fn osc(&self, bus: &GainNode, freq: f32, start: f64, dur: f64, peak: f32, instr: &Instrument) -> Option<(OscillatorNode, GainNode, f64)> {
         let osc = self.ctx.create_oscillator().ok()?;
         let gain = self.ctx.create_gain().ok()?;
         osc.set_type(instr.wave);
@@ -183,7 +189,7 @@ impl AudioEngine {
         gain.connect_with_audio_node(bus).ok()?;
         osc.start_with_when(start).ok()?;
         osc.stop_with_when(end + 0.03).ok()?;
-        Some((osc, gain))
+        Some((osc, gain, end + 0.03))
     }
 
     /// A kick-drum "boom" for the count-off: a low sine with a fast pitch drop,
@@ -203,7 +209,7 @@ impl AudioEngine {
             {
                 let _ = osc.start_with_when(when);
                 let _ = osc.stop_with_when(when + 0.16);
-                self.voices.push((osc, gain));
+                self.voices.push((osc, gain, when + 0.16));
             }
         }
     }
@@ -316,14 +322,28 @@ impl AudioEngine {
         self.pending.sort_by(|a, b| b.when.total_cmp(&a.when));
     }
 
-    /// Create up to `max` of the pending oscillators (soonest first). Called
-    /// every frame so the whole song is realised within a few frames.
-    pub fn pump(&mut self, max: usize) {
-        for _ in 0..max {
-            match self.pending.pop() {
-                Some(p) => self.note(p.bus, p.pitch, p.when, p.dur, p.peak, &p.instr),
-                None => break,
+    /// Realise the notes due within the look-ahead window and prune finished
+    /// voices. Called every frame: only a few seconds of notes are ever alive at
+    /// once, which keeps the audio-node count low (mobile browsers cap it, and a
+    /// flood of nodes caused random dropouts on tablets).
+    pub fn pump(&mut self) {
+        let now = self.ctx.current_time();
+        // Disconnect voices whose sound is over.
+        self.voices.retain(|(osc, gain, end)| {
+            if *end < now - 0.05 {
+                let _ = osc.disconnect();
+                let _ = gain.disconnect();
+                false
+            } else {
+                true
             }
+        });
+        // Create everything starting within the look-ahead horizon (soonest are
+        // at the end of `pending`, sorted descending by time).
+        let horizon = now + LOOKAHEAD;
+        while self.pending.last().map_or(false, |p| p.when <= horizon) {
+            let p = self.pending.pop().unwrap();
+            self.note(p.bus, p.pitch, p.when, p.dur, p.peak, &p.instr);
         }
     }
 
@@ -371,14 +391,10 @@ impl AudioEngine {
         };
 
         self.build_pending(song, parts, start_tick);
-        // Realise everything due in the first ~1.5 s immediately so playback is
-        // on time; the rest is pumped over the next frames.
-        let imminent = self.origin + 1.5;
-        while self.pending.last().map_or(false, |p| p.when < imminent) {
-            let p = self.pending.pop().unwrap();
-            self.note(p.bus, p.pitch, p.when, p.dur, p.peak, &p.instr);
-        }
         self.scheduled = true;
+        // Realise the first look-ahead window now so playback starts on time;
+        // subsequent windows are created frame by frame by `pump`.
+        self.pump();
     }
 
     pub fn resume(&self) {
@@ -404,7 +420,7 @@ impl AudioEngine {
             let _ = osc.disconnect();
             let _ = gain.disconnect();
         }
-        for (osc, gain) in self.voices.drain(..) {
+        for (osc, gain, _end) in self.voices.drain(..) {
             let g = gain.gain();
             let _ = g.cancel_scheduled_values(t);
             let _ = g.set_value_at_time(g.value(), t);

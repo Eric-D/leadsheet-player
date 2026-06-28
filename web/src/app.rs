@@ -368,7 +368,7 @@ impl eframe::App for App {
         let mut finished = false;
         if self.playing {
             if let Some(a) = &mut self.audio {
-                a.pump(250); // realise queued oscillators a batch at a time
+                a.pump(); // realise/prune the look-ahead window of notes
                 current_tick = a.position_ticks();
                 finished = a.finished();
             }
