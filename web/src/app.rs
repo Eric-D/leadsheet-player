@@ -441,15 +441,14 @@ impl eframe::App for App {
         egui::TopBottomPanel::top("bar").show(ctx, |ui| {
             ui.add_space(4.0);
             ui.horizontal_wrapped(|ui| {
-                if ui.button("📂  Ouvrir .MGU / .SGU").clicked() {
+                if ui.button("📂  Ouvrir").clicked() {
                     let inbox = self.inbox.clone();
                     let ctx2 = ctx.clone();
+                    // No extension filter: just the file explorer — pick a file
+                    // and it opens, cancel and nothing happens. (Mobile pickers
+                    // hide .MGU files when an unknown-MIME filter is set.)
                     wasm_bindgen_futures::spawn_local(async move {
-                        if let Some(file) = rfd::AsyncFileDialog::new()
-                            .add_filter("Band-in-a-Box", &["MGU", "SGU", "mgu", "sgu"])
-                            .pick_file()
-                            .await
-                        {
+                        if let Some(file) = rfd::AsyncFileDialog::new().pick_file().await {
                             let bytes = file.read().await;
                             *inbox.borrow_mut() = Some((file.file_name(), bytes));
                             ctx2.request_repaint();
