@@ -31,6 +31,9 @@ pub struct App {
     vol_chords: f32,
     vol_bass: f32,
     show_chords: bool,
+    /// Show the instrument + volume rows (folded by default to save vertical
+    /// space on phones/tablets in landscape).
+    show_settings: bool,
     show_library: bool,
     library: Vec<LibEntry>,
     library_inbox: LibInbox,
@@ -68,6 +71,7 @@ impl App {
             vol_chords: 0.8,
             vol_bass: 0.9,
             show_chords: true,
+            show_settings: false,
             show_library: false,
             library: Vec::new(),
             library_inbox: Rc::new(RefCell::new(None)),
@@ -444,21 +448,27 @@ impl eframe::App for App {
                 }
                 ui.separator();
 
+                // Big, finger-friendly transport buttons (used on tablets/phones).
+                let big = |label: &str| {
+                    egui::Button::new(RichText::new(label).size(18.0)).min_size(egui::vec2(58.0, 38.0))
+                };
                 let has_song = self.song.is_some();
                 ui.add_enabled_ui(has_song, |ui| {
                     if self.playing {
-                        if ui.button("⏸  Pause").clicked() {
+                        if ui.add(big("⏸")).on_hover_text("Pause").clicked() {
                             self.pause();
                         }
-                    } else if ui.button("▶  Lecture").clicked() {
+                    } else if ui.add(big("▶")).on_hover_text("Lecture").clicked() {
                         self.play();
                     }
-                    if ui.button("⏹  Stop").clicked() {
+                    if ui.add(big("⏹")).on_hover_text("Stop").clicked() {
                         self.stop();
                     }
                 });
                 ui.checkbox(&mut self.count_in, "Décompte")
                     .on_hover_text("Un décompte batterie de 2 mesures avant le départ, comme dans Band-in-a-Box");
+                ui.toggle_value(&mut self.show_settings, "⚙")
+                    .on_hover_text("Instruments & volumes");
 
                 ui.separator();
                 ui.label("Tempo");
@@ -490,32 +500,34 @@ impl eframe::App for App {
                 }
             });
 
-            // Instrument selection — one timbre per part, à la Band-in-a-Box.
-            let mut changed = false;
-            ui.horizontal(|ui| {
-                ui.label("🎹 Instruments :");
-                instrument_part(ui, "Mélodie", "mel", &mut self.parts.melody_on, &mut self.parts.melody_instr, &mut changed);
-                ui.separator();
-                instrument_part(ui, "Accords", "chd", &mut self.parts.chords_on, &mut self.parts.chords_instr, &mut changed);
-                ui.separator();
-                instrument_part(ui, "Basse", "bas", &mut self.parts.bass_on, &mut self.parts.bass_instr, &mut changed);
-            });
-            if changed {
-                self.reschedule_keep_pos();
-            }
+            // Instruments + volumes — folded by default (⚙) to keep the chart
+            // area large on phones/tablets.
+            if self.show_settings {
+                let mut changed = false;
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("🎹 Instruments :");
+                    instrument_part(ui, "Mélodie", "mel", &mut self.parts.melody_on, &mut self.parts.melody_instr, &mut changed);
+                    ui.separator();
+                    instrument_part(ui, "Accords", "chd", &mut self.parts.chords_on, &mut self.parts.chords_instr, &mut changed);
+                    ui.separator();
+                    instrument_part(ui, "Basse", "bas", &mut self.parts.bass_on, &mut self.parts.bass_instr, &mut changed);
+                });
+                if changed {
+                    self.reschedule_keep_pos();
+                }
 
-            // Volume mixer — live, never restarts playback.
-            let mut vol_changed = false;
-            ui.horizontal(|ui| {
-                ui.label("🔊 Volume :");
-                vol_changed |= volume_slider(ui, "Global", &mut self.vol_master);
-                ui.separator();
-                vol_changed |= volume_slider(ui, "Mélodie", &mut self.vol_melody);
-                vol_changed |= volume_slider(ui, "Accords", &mut self.vol_chords);
-                vol_changed |= volume_slider(ui, "Basse", &mut self.vol_bass);
-            });
-            if vol_changed {
-                self.apply_volumes();
+                let mut vol_changed = false;
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("🔊 Volume :");
+                    vol_changed |= volume_slider(ui, "Global", &mut self.vol_master);
+                    ui.separator();
+                    vol_changed |= volume_slider(ui, "Mélodie", &mut self.vol_melody);
+                    vol_changed |= volume_slider(ui, "Accords", &mut self.vol_chords);
+                    vol_changed |= volume_slider(ui, "Basse", &mut self.vol_bass);
+                });
+                if vol_changed {
+                    self.apply_volumes();
+                }
             }
             ui.add_space(4.0);
         });
