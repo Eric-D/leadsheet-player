@@ -82,9 +82,20 @@ pub struct AudioEngine {
     scheduled: bool,
     /// Ticks in one form repetition (for looping the accompaniment).
     form_ticks: u32,
-    /// Real end of the song; we schedule only up to `window_end_tick` at a time.
-    song_end_tick: u32,
-    window_end_tick: u32,
+    /// Notes computed but whose oscillator isn't created yet. We create them a
+    /// few per frame so a (re)schedule never spikes the CPU, yet the whole song
+    /// ends up in the audio graph — which keeps playing even if the tab is
+    /// backgrounded (the render loop stops there, but the audio thread doesn't).
+    pending: Vec<PendingNote>,
+}
+
+struct PendingNote {
+    bus: BusKind,
+    pitch: u8,
+    when: f64,
+    dur: f64,
+    peak: f32,
+    instr: Instrument,
 }
 
 fn midi_to_freq(pitch: u8) -> f32 {
@@ -120,8 +131,7 @@ impl AudioEngine {
             end_tick: 0,
             scheduled: false,
             form_ticks: 0,
-            song_end_tick: 0,
-            window_end_tick: 0,
+            pending: Vec::new(),
         })
     }
 
@@ -197,29 +207,15 @@ impl AudioEngine {
         Some((when, dur.max(0.03)))
     }
 
-    /// Seconds of music scheduled ahead at once. A bounded window means far
-    /// fewer live oscillators, so a reschedule (instrument/part switch) is cheap
-    /// and doesn't spike the CPU / crackle.
-    const HORIZON_SEC: f64 = 20.0;
-    fn horizon_ticks(&self) -> u32 {
-        (Self::HORIZON_SEC / self.sec_per_tick.max(1e-9)) as u32
-    }
-
-    /// Schedule every note/accompaniment event starting in `[from, to)`. With
-    /// `clip` (the first window) also include a note already sounding at `from`.
-    fn schedule_window(&mut self, song: &Song, parts: &Parts, from: u32, to: u32, clip: bool) {
-        let want = |tick: u32, dur: u32| tick < to && (if clip { tick + dur > from } else { tick >= from });
+    /// Compute every note of the song (from `start_tick`) into `self.pending`
+    /// without creating any oscillator yet — that part is cheap.
+    fn build_pending(&mut self, song: &Song, parts: &Parts, start_tick: u32) {
         if parts.melody_on {
             let instr = PRESETS[parts.melody_instr.min(PRESETS.len() - 1)];
             for n in &song.melody {
-                if n.tick >= to {
-                    break;
-                }
-                if want(n.tick, n.dur) {
-                    if let Some((when, dur)) = self.place(n.tick, n.dur, from) {
-                        let peak = 0.18 + (n.vel as f32 / 127.0) * 0.12;
-                        self.note(BusKind::Melody, n.pitch, when, dur, peak, &instr);
-                    }
+                if let Some((when, dur)) = self.place(n.tick, n.dur, start_tick) {
+                    let peak = 0.18 + (n.vel as f32 / 127.0) * 0.12;
+                    self.pending.push(PendingNote { bus: BusKind::Melody, pitch: n.pitch, when, dur, peak, instr });
                 }
             }
         }
@@ -231,22 +227,19 @@ impl AudioEngine {
             let bass_i = PRESETS[parts.bass_instr.min(PRESETS.len() - 1)];
             let events = leadsheet::arrange::arrange(song, &leadsheet::style::Style::default());
             let form = self.form_ticks;
-            let mut base = (from / form) * form;
-            while base < to {
+            let mut base = 0u32;
+            while base < self.end_tick {
                 for e in &events {
                     let abs = base + e.tick;
-                    if !want(abs, e.dur) {
-                        continue;
-                    }
                     match e.part {
                         AP::Comp if parts.chords_on => {
-                            if let Some((when, dur)) = self.place(abs, e.dur, from) {
-                                self.note(BusKind::Chords, e.pitch, when, dur.min(2.0), 0.06, &chord_i);
+                            if let Some((when, dur)) = self.place(abs, e.dur, start_tick) {
+                                self.pending.push(PendingNote { bus: BusKind::Chords, pitch: e.pitch, when, dur: dur.min(2.0), peak: 0.06, instr: chord_i });
                             }
                         }
                         AP::Bass if parts.bass_on => {
-                            if let Some((when, dur)) = self.place(abs, e.dur, from) {
-                                self.note(BusKind::Bass, e.pitch, when, dur.min(1.2), 0.13, &bass_i);
+                            if let Some((when, dur)) = self.place(abs, e.dur, start_tick) {
+                                self.pending.push(PendingNote { bus: BusKind::Bass, pitch: e.pitch, when, dur: dur.min(1.2), peak: 0.13, instr: bass_i });
                             }
                         }
                         _ => {}
@@ -255,10 +248,23 @@ impl AudioEngine {
                 base += form;
             }
         }
+        // Soonest last, so `pump` can pop the next note in O(1).
+        self.pending.sort_by(|a, b| b.when.total_cmp(&a.when));
     }
 
-    /// (Re)build the schedule from `start_tick`, but only the first window's
-    /// worth of notes; `maybe_extend` appends the rest as playback advances.
+    /// Create up to `max` of the pending oscillators (soonest first). Called
+    /// every frame so the whole song is realised within a few frames.
+    pub fn pump(&mut self, max: usize) {
+        for _ in 0..max {
+            match self.pending.pop() {
+                Some(p) => self.note(p.bus, p.pitch, p.when, p.dur, p.peak, &p.instr),
+                None => break,
+            }
+        }
+    }
+
+    /// (Re)build the schedule from `start_tick`. Notes are computed up front but
+    /// their oscillators are created in batches (`pump`) to avoid a CPU spike.
     pub fn schedule(&mut self, song: &Song, tempo_factor: f32, parts: &Parts, start_tick: u32) {
         self.clear();
         let bpm = (song.tempo_bpm as f32 * tempo_factor).max(1.0);
@@ -270,31 +276,17 @@ impl AudioEngine {
         let cells = chord_cells(song);
         self.form_ticks = cells.iter().map(|(s, d, _)| s + d).max().unwrap_or(0);
         let accompaniment = (parts.chords_on || parts.bass_on) && self.form_ticks > 0;
-        let song_end = if accompaniment { melody_end.max(self.form_ticks) } else { melody_end };
+        self.end_tick = if accompaniment { melody_end.max(self.form_ticks) } else { melody_end };
 
-        let window_end = song_end.min(start_tick + self.horizon_ticks());
-        self.schedule_window(song, parts, start_tick, window_end, true);
-
-        self.song_end_tick = song_end;
-        self.window_end_tick = window_end;
-        self.end_tick = song_end;
+        self.build_pending(song, parts, start_tick);
+        // Realise everything due in the first ~1.5 s immediately so playback is
+        // on time; the rest is pumped over the next frames.
+        let imminent = self.origin + 1.5;
+        while self.pending.last().map_or(false, |p| p.when < imminent) {
+            let p = self.pending.pop().unwrap();
+            self.note(p.bus, p.pitch, p.when, p.dur, p.peak, &p.instr);
+        }
         self.scheduled = true;
-    }
-
-    /// Append the next window once playback nears the scheduled horizon. Appends
-    /// on the existing timeline (no clear), so it's seamless. Call every frame.
-    pub fn maybe_extend(&mut self, song: &Song, parts: &Parts) {
-        if !self.scheduled || self.window_end_tick >= self.song_end_tick {
-            return;
-        }
-        let refill = (6.0 / self.sec_per_tick.max(1e-9)) as u32;
-        if self.position_ticks() + refill < self.window_end_tick {
-            return;
-        }
-        let to = self.song_end_tick.min(self.window_end_tick + self.horizon_ticks());
-        let from = self.window_end_tick;
-        self.schedule_window(song, parts, from, to, false);
-        self.window_end_tick = to;
     }
 
     pub fn resume(&self) {
@@ -308,6 +300,8 @@ impl AudioEngine {
     }
 
     fn clear(&mut self) {
+        // Drop any not-yet-created notes from the previous schedule.
+        self.pending.clear();
         // Ramp each voice to silence over a few ms before stopping, so cutting
         // playback (tempo change, seek, stop) doesn't produce a click/pop.
         let t = self.ctx.current_time();
