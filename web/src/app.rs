@@ -454,24 +454,28 @@ impl eframe::App for App {
                     ui.label(format!("≈ {bpm} BPM"));
 
                     ui.separator();
-                    // Beat counter (métronome visuel) : le premier temps en rouge.
+                    // Beat counter: just the current beat, big, in a red disc
+                    // (brighter on the downbeat). Like a metronome readout.
                     let beats = 4u32;
                     let unit = TICKS_PER_BAR / beats; // ticks per beat
                     let beat = (play_tick / unit) % beats;
-                    for b in 0..beats {
-                        let active = self.playing && b == beat;
-                        let base = if b == 0 {
-                            Color32::from_rgb(225, 65, 65) // downbeat = red
-                        } else {
-                            Color32::from_gray(170)
-                        };
-                        let col = if active { base } else { base.gamma_multiply(0.32) };
-                        let mut t = RichText::new(format!("{}", b + 1)).color(col).monospace();
-                        if active {
-                            t = t.strong().size(17.0);
-                        }
-                        ui.label(t);
-                    }
+                    let (rect, _) = ui.allocate_exact_size(egui::Vec2::splat(30.0), egui::Sense::hover());
+                    let p = ui.painter_at(rect);
+                    let fill = if !self.playing {
+                        Color32::from_gray(70)
+                    } else if beat == 0 {
+                        Color32::from_rgb(228, 55, 55) // downbeat = bright red
+                    } else {
+                        Color32::from_rgb(150, 48, 48)
+                    };
+                    p.circle_filled(rect.center(), 14.0, fill);
+                    p.text(
+                        rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        format!("{}", beat + 1),
+                        egui::FontId::proportional(18.0),
+                        Color32::WHITE,
+                    );
 
                     // Elapsed-time clock (MM:SS).
                     let actual_bpm = (s.tempo_bpm as f32 * self.tempo_factor).max(1.0) as f64;
