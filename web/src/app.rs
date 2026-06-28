@@ -606,6 +606,7 @@ impl eframe::App for App {
         let mut start_rename: Option<(f64, String)> = None;
         let (mut cl_save, mut cl_pull, mut cl_push, mut cl_newkey) = (false, false, false, false);
         let mut do_add = false;
+        let mut close_lib = false;
         // Filtered + sorted snapshot, so the closure doesn't borrow self.library.
         let view: Vec<LibEntry> = {
             let q = self.library_search.to_lowercase();
@@ -635,11 +636,18 @@ impl eframe::App for App {
             .fixed_size([ctx.screen_rect().width(), ctx.screen_rect().height()])
             .anchor(egui::Align2::LEFT_TOP, [0.0, 0.0])
             .show(ctx, |ui| {
-                ui.label(
-                    RichText::new("Stockée dans ce navigateur (hors-ligne).")
-                        .small()
-                        .color(Color32::from_gray(140)),
-                );
+                // Easy-to-reach close button (the title-bar ✕ sits in the
+                // rounded screen corner and is hard to tap on phones).
+                ui.horizontal(|ui| {
+                    if ui.add(egui::Button::new(RichText::new("✕ Fermer").size(16.0))).clicked() {
+                        close_lib = true;
+                    }
+                    ui.label(
+                        RichText::new("Stockée dans ce navigateur (hors-ligne).")
+                            .small()
+                            .color(Color32::from_gray(140)),
+                    );
+                });
 
                 // Add the currently-loaded song to the library.
                 let can_add = self.current_bytes.is_some() && self.song.is_some();
@@ -780,7 +788,7 @@ impl eframe::App for App {
                     }
                 });
             });
-        self.show_library = lib_open;
+        self.show_library = lib_open && !close_lib;
         if do_add {
             if let (Some(bytes), Some(song)) = (&self.current_bytes, &self.song) {
                 let key = format!(
