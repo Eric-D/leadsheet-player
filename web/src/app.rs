@@ -665,7 +665,8 @@ impl eframe::App for App {
                         ui.label("URL Supabase");
                         ui.text_edit_singleline(&mut self.cloud.url);
                         ui.end_row();
-                        ui.label("Clé anon");
+                        ui.label("Clé publishable")
+                            .on_hover_text("clé sb_publishable_… (ou anon). PAS la clé secrète !");
                         ui.text_edit_singleline(&mut self.cloud.anon);
                         ui.end_row();
                         ui.label("Clé d'espace");
