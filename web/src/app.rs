@@ -435,8 +435,8 @@ impl eframe::App for App {
                         self.stop();
                     }
                 });
-                ui.checkbox(&mut self.count_in, "🥁 Décompte")
-                    .on_hover_text("Un décompte d'une mesure (4 clics) avant le départ, comme dans Band-in-a-Box");
+                ui.checkbox(&mut self.count_in, "Décompte")
+                    .on_hover_text("Un décompte batterie de 2 mesures avant le départ, comme dans Band-in-a-Box");
 
                 ui.separator();
                 ui.label("Tempo");

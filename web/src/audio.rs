@@ -13,9 +13,7 @@
 //! is what powers "keep position on option change" and "click a chord to seek".
 
 use leadsheet::{Song, PPQ};
-use web_sys::{
-    AudioBuffer, AudioContext, BiquadFilterType, GainNode, OscillatorNode, OscillatorType,
-};
+use web_sys::{AudioContext, GainNode, OscillatorNode, OscillatorType};
 
 #[derive(Clone, Copy)]
 pub struct Instrument {
@@ -89,8 +87,6 @@ pub struct AudioEngine {
     /// ends up in the audio graph — which keeps playing even if the tab is
     /// backgrounded (the render loop stops there, but the audio thread doesn't).
     pending: Vec<PendingNote>,
-    /// White-noise buffer reused for the drum count-in (snare/hi-hat bursts).
-    noise: AudioBuffer,
 }
 
 struct PendingNote {
@@ -121,12 +117,6 @@ impl AudioEngine {
         let mel_bus = mk_bus()?;
         let chd_bus = mk_bus()?;
         let bas_bus = mk_bus()?;
-        // Pre-build a short white-noise buffer for the drum clicks.
-        let sr = ctx.sample_rate();
-        let len = (sr * 0.3).max(1.0) as u32;
-        let noise = ctx.create_buffer(1, len, sr).ok()?;
-        let mut data: Vec<f32> = (0..len).map(|_| js_sys::Math::random() as f32 * 2.0 - 1.0).collect();
-        noise.copy_to_channel(&mut data, 0).ok()?;
         Some(Self {
             ctx,
             master,
@@ -142,7 +132,6 @@ impl AudioEngine {
             scheduled: false,
             form_ticks: 0,
             pending: Vec::new(),
-            noise,
         })
     }
 
@@ -187,49 +176,24 @@ impl AudioEngine {
         Some((osc, gain))
     }
 
-    /// A drum count-in hit: a noise burst (snare on accents, hi-hat/stick
-    /// otherwise) plus a kick drum on the accented beats. Goes straight to
-    /// master. Short and one-shot, so it cleans itself up after `stop`.
-    fn drum(&mut self, when: f64, accent: bool) {
-        // Noise burst → high-pass → gain envelope.
-        if let (Ok(src), Ok(filt), Ok(gain)) = (
-            self.ctx.create_buffer_source(),
-            self.ctx.create_biquad_filter(),
-            self.ctx.create_gain(),
-        ) {
-            src.set_buffer(Some(&self.noise));
-            filt.set_type(BiquadFilterType::Highpass);
-            filt.frequency().set_value(if accent { 1400.0 } else { 4000.0 });
+    /// A kick-drum "boom" for the count-off: a low sine with a fast pitch drop,
+    /// punchy enough that consecutive hits stay distinct. Accents hit harder.
+    fn kick(&mut self, when: f64, accent: bool) {
+        if let (Ok(osc), Ok(gain)) = (self.ctx.create_oscillator(), self.ctx.create_gain()) {
+            osc.set_type(OscillatorType::Sine);
+            let f = osc.frequency();
+            let _ = f.set_value_at_time(if accent { 165.0 } else { 140.0 }, when);
+            let _ = f.exponential_ramp_to_value_at_time(50.0, when + 0.09);
             let g = gain.gain();
-            let peak = if accent { 0.7 } else { 0.35 };
-            let dur = if accent { 0.14 } else { 0.05 };
+            let peak = if accent { 1.0 } else { 0.7 };
             let _ = g.set_value_at_time(peak, when);
-            let _ = g.exponential_ramp_to_value_at_time(0.001, when + dur);
-            if src.connect_with_audio_node(&filt).is_ok()
-                && filt.connect_with_audio_node(&gain).is_ok()
+            let _ = g.exponential_ramp_to_value_at_time(0.001, when + 0.14);
+            if osc.connect_with_audio_node(&gain).is_ok()
                 && gain.connect_with_audio_node(&self.master).is_ok()
             {
-                let _ = src.start_with_when(when);
-                let _ = src.stop_with_when(when + dur + 0.02);
-            }
-        }
-        // Kick on the accented beats (a low sine with a pitch drop).
-        if accent {
-            if let (Ok(osc), Ok(gain)) = (self.ctx.create_oscillator(), self.ctx.create_gain()) {
-                osc.set_type(OscillatorType::Sine);
-                let f = osc.frequency();
-                let _ = f.set_value_at_time(150.0, when);
-                let _ = f.exponential_ramp_to_value_at_time(55.0, when + 0.12);
-                let g = gain.gain();
-                let _ = g.set_value_at_time(0.9, when);
-                let _ = g.exponential_ramp_to_value_at_time(0.001, when + 0.18);
-                if osc.connect_with_audio_node(&gain).is_ok()
-                    && gain.connect_with_audio_node(&self.master).is_ok()
-                {
-                    let _ = osc.start_with_when(when);
-                    let _ = osc.stop_with_when(when + 0.2);
-                    self.voices.push((osc, gain));
-                }
+                let _ = osc.start_with_when(when);
+                let _ = osc.stop_with_when(when + 0.16);
+                self.voices.push((osc, gain));
             }
         }
     }
@@ -332,8 +296,9 @@ impl AudioEngine {
         let beat_dur = PPQ as f64 * self.sec_per_tick; // one beat
         let lead = self.ctx.current_time() + 0.12;
         if count_in {
-            for &(b, accent) in &[(0.0, true), (2.0, false), (4.0, true), (5.0, false), (6.0, false), (7.0, false)] {
-                self.drum(lead + b * beat_dur, accent);
+            // "boom — boom —  :  bom bom bom", the strong booms accented.
+            for &(b, accent) in &[(0.0, true), (2.0, true), (4.0, false), (5.0, false), (6.0, false)] {
+                self.kick(lead + b * beat_dur, accent);
             }
             self.origin = lead + 8.0 * beat_dur;
         } else {
