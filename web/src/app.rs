@@ -657,11 +657,8 @@ impl eframe::App for App {
             .open(&mut lib_open)
             .collapsible(false)
             .resizable(false)
-            .fixed_size([
-                ctx.screen_rect().width() * 0.94,
-                ctx.screen_rect().height() * 0.9,
-            ])
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .fixed_size([ctx.screen_rect().width(), ctx.screen_rect().height()])
+            .anchor(egui::Align2::LEFT_TOP, [0.0, 0.0])
             .show(ctx, |ui| {
                 ui.label(
                     RichText::new("Stockée dans ce navigateur (hors-ligne).")
