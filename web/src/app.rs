@@ -701,7 +701,7 @@ impl eframe::App for App {
                     } else {
                         Color32::from_gray(220)
                     };
-                    ui.label(RichText::new(format!("{}", beat + 1)).size(34.0).strong().color(col));
+                    ui.label(RichText::new(format!("{}", beat + 1)).size(46.0).strong().color(col));
                 });
             });
             let structure = if song.form_bars > 0 {
