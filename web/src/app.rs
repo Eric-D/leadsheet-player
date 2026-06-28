@@ -44,6 +44,8 @@ pub struct App {
     playing: bool,
     /// egui time of the last seek, to debounce rapid chord clicks.
     last_seek_t: f64,
+    /// Play a one-bar drum count-in before the song starts (like BiaB).
+    count_in: bool,
     error: Option<String>,
 }
 
@@ -76,6 +78,7 @@ impl App {
             current_bytes: None,
             playing: false,
             last_seek_t: 0.0,
+            count_in: false,
             error: None,
         };
         // Load the bundled original demo so the app isn't empty on first run.
@@ -156,9 +159,10 @@ impl App {
         self.apply_volumes();
         let factor = self.tempo_factor;
         let parts = self.parts;
+        let count_in = self.count_in;
         if let (Some(a), Some(song)) = (&mut self.audio, &self.song) {
             if !a.is_scheduled() {
-                a.schedule(song, factor, &parts, 0);
+                a.schedule(song, factor, &parts, 0, count_in);
             }
             a.resume();
             self.playing = true;
@@ -186,7 +190,7 @@ impl App {
         let factor = self.tempo_factor;
         let parts = self.parts;
         if let (Some(a), Some(song)) = (&mut self.audio, &self.song) {
-            a.schedule(song, factor, &parts, tick);
+            a.schedule(song, factor, &parts, tick, false);
             a.resume();
             self.playing = true;
         }
@@ -201,7 +205,7 @@ impl App {
         if let (Some(a), Some(song)) = (&mut self.audio, &self.song) {
             if a.is_scheduled() {
                 let pos = a.position_ticks();
-                a.schedule(song, factor, &parts, pos);
+                a.schedule(song, factor, &parts, pos, false);
                 if was_playing {
                     a.resume();
                 } else {
@@ -431,6 +435,8 @@ impl eframe::App for App {
                         self.stop();
                     }
                 });
+                ui.checkbox(&mut self.count_in, "🥁 Décompte")
+                    .on_hover_text("Un décompte d'une mesure (4 clics) avant le départ, comme dans Band-in-a-Box");
 
                 ui.separator();
                 ui.label("Tempo");

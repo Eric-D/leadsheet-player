@@ -176,6 +176,27 @@ impl AudioEngine {
         Some((osc, gain))
     }
 
+    /// A short percussive count-in click (accented on the downbeat). Goes
+    /// straight to master and is tracked in `voices` so `clear()` cleans it up.
+    fn click(&mut self, when: f64, accent: bool) {
+        if let (Ok(osc), Ok(gain)) = (self.ctx.create_oscillator(), self.ctx.create_gain()) {
+            osc.set_type(OscillatorType::Square);
+            osc.frequency().set_value(if accent { 2000.0 } else { 1250.0 });
+            let g = gain.gain();
+            let peak = if accent { 0.5 } else { 0.3 };
+            let _ = g.set_value_at_time(0.0001, when);
+            let _ = g.linear_ramp_to_value_at_time(peak, when + 0.002);
+            let _ = g.exponential_ramp_to_value_at_time(0.001, when + 0.05);
+            if osc.connect_with_audio_node(&gain).is_ok()
+                && gain.connect_with_audio_node(&self.master).is_ok()
+            {
+                let _ = osc.start_with_when(when);
+                let _ = osc.stop_with_when(when + 0.06);
+                self.voices.push((osc, gain));
+            }
+        }
+    }
+
     fn note(&mut self, bus_kind: BusKind, pitch: u8, start: f64, dur: f64, peak: f32, instr: &Instrument) {
         let bus = match bus_kind {
             BusKind::Melody => self.mel_bus.clone(),
@@ -265,11 +286,22 @@ impl AudioEngine {
 
     /// (Re)build the schedule from `start_tick`. Notes are computed up front but
     /// their oscillators are created in batches (`pump`) to avoid a CPU spike.
-    pub fn schedule(&mut self, song: &Song, tempo_factor: f32, parts: &Parts, start_tick: u32) {
+    pub fn schedule(&mut self, song: &Song, tempo_factor: f32, parts: &Parts, start_tick: u32, count_in: bool) {
         self.clear();
         let bpm = (song.tempo_bpm as f32 * tempo_factor).max(1.0);
         self.sec_per_tick = 60.0 / (bpm as f64 * PPQ as f64);
-        self.origin = self.ctx.current_time() + 0.12;
+        // Optional one-bar drum count-in (4 clicks, downbeat accented), then the
+        // song starts in time — like Band-in-a-Box's lead-in.
+        let beat_dur = PPQ as f64 * self.sec_per_tick; // one beat
+        let lead = self.ctx.current_time() + 0.12;
+        if count_in {
+            for i in 0..4 {
+                self.click(lead + i as f64 * beat_dur, i == 0);
+            }
+            self.origin = lead + 4.0 * beat_dur;
+        } else {
+            self.origin = lead;
+        }
         self.origin_tick = start_tick;
 
         let melody_end = song.melody.iter().map(|n| n.tick + n.dur).max().unwrap_or(0);
