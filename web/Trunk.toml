@@ -1,0 +1,8 @@
+[build]
+target = "index.html"
+
+[serve]
+# Bind all interfaces so the app is reachable on the VM's LAN IP.
+addresses = ["0.0.0.0"]
+port = 8080
+open = false

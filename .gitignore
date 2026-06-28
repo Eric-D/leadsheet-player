@@ -1,0 +1,10 @@
+# Build artifacts
+target/
+dist/
+
+# Private content: copyrighted Band-in-a-Box songs + screenshots used only for
+# local testing / reverse-engineering. NEVER committed.
+/private
+
+# Misc
+**/*.rs.bk

@@ -1,0 +1,13 @@
+{
+  "name": "Lecteur Band-in-a-Box",
+  "short_name": "BiaB Player",
+  "description": "Lit, écoute et affiche les fichiers Band-in-a-Box (.MGU/.SGU)",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1b1b20",
+  "theme_color": "#1b1b20",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

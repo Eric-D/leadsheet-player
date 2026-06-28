@@ -1,0 +1,14 @@
+[package]
+name = "leadsheet"
+version = "0.1.0"
+edition = "2021"
+description = "Read song lead-sheets (chords, melody, structure) from multiple formats (Band-in-a-Box .MGU/.SGU, MIDI) into one model, with pluggable accompaniment styles."
+license = "MIT"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+ron = "0.8"
+
+[[example]]
+name = "validate"
+path = "examples/validate.rs"

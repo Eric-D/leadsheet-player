@@ -1,0 +1,27 @@
+[package]
+name = "biab-web"
+version = "0.1.0"
+edition = "2021"
+description = "Web player for Band-in-a-Box files — Rust/WASM"
+license = "MIT"
+
+[[bin]]
+name = "biab-web"
+path = "src/main.rs"
+
+[dependencies]
+leadsheet = { path = "../leadsheet" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+eframe = { version = "0.29", default-features = false, features = ["default_fonts", "glow"] }
+egui = "0.29"
+log = "0.4"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+console_error_panic_hook = "0.1"
+rfd = "0.15"
+web-sys = { version = "0.3", features = [
+    "Window", "Document", "AudioContext", "AudioContextState", "BaseAudioContext",
+    "AudioDestinationNode", "AudioNode", "AudioParam", "GainNode", "OscillatorNode", "OscillatorType",
+] }

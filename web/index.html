@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Lecteur Band-in-a-Box (.MGU / .SGU)</title>
+    <link rel="manifest" href="manifest.json" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <meta name="theme-color" content="#1b1b20" />
+    <link data-trunk rel="copy-file" href="manifest.json" />
+    <link data-trunk rel="copy-file" href="icon.svg" />
+    <link data-trunk rel="copy-file" href="service-worker.js" />
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #1b1b20; }
+      canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+      #loading {
+        position: absolute; inset: 0; display: flex; align-items: center;
+        justify-content: center; color: #cfcfcf; font-family: system-ui, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="the_canvas_id"></canvas>
+    <div id="loading">Chargement…</div>
+    <script>
+      window.addEventListener("DOMContentLoaded", () => {
+        const obs = new MutationObserver(() => {});
+        // Hide the loading text once the canvas has been painted.
+        setTimeout(() => { const l = document.getElementById("loading"); if (l) l.remove(); }, 1500);
+      });
+    </script>
+    <script>
+      // Register the service worker for offline / installable PWA.
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () =>
+          navigator.serviceWorker.register("./service-worker.js").catch(() => {})
+        );
+      }
+    </script>
+    <script>
+      // Local song library backed by IndexedDB — no server, fully offline.
+      (function () {
+        const DB = "biab", STORE = "songs";
+        function open() {
+          return new Promise((res, rej) => {
+            const r = indexedDB.open(DB, 1);
+            r.onupgradeneeded = () => {
+              const db = r.result;
+              if (!db.objectStoreNames.contains(STORE))
+                db.createObjectStore(STORE, { keyPath: "id", autoIncrement: true });
+            };
+            r.onsuccess = () => res(r.result);
+            r.onerror = () => rej(r.error);
+          });
+        }
+        function store(mode) { return open().then(db => db.transaction(STORE, mode).objectStore(STORE)); }
+        window.localLib = {
+          list: () => store("readonly").then(s => new Promise((res, rej) => {
+            const out = [], c = s.openCursor();
+            c.onsuccess = () => {
+              const cur = c.result;
+              if (cur) { const v = cur.value; out.push({ id: v.id, name: v.name, title: v.title, key: v.key, tempo: v.tempo, style: v.style }); cur.continue(); }
+              else res(out);
+            };
+            c.onerror = () => rej(c.error);
+          })),
+          get: (id) => store("readonly").then(s => new Promise((res, rej) => {
+            const r = s.get(id);
+            r.onsuccess = () => res(r.result ? r.result.bytes : new Uint8Array());
+            r.onerror = () => rej(r.error);
+          })),
+          save: (name, bytes, title, key, tempo, style) => store("readwrite").then(s => new Promise((res, rej) => {
+            const r = s.add({ name, bytes, title, key, tempo, style, createdAt: Date.now() });
+            r.onsuccess = () => res(r.result);
+            r.onerror = () => rej(r.error);
+          })),
+          remove: (id) => store("readwrite").then(s => new Promise((res, rej) => {
+            const r = s.delete(id);
+            r.onsuccess = () => res(true);
+            r.onerror = () => rej(r.error);
+          })),
+          rename: (id, title) => store("readwrite").then(s => new Promise((res, rej) => {
+            const g = s.get(id);
+            g.onsuccess = () => {
+              const v = g.result; if (!v) { res(false); return; }
+              v.title = title; const p = s.put(v);
+              p.onsuccess = () => res(true); p.onerror = () => rej(p.error);
+            };
+            g.onerror = () => rej(g.error);
+          })),
+        };
+      })();
+    </script>
+    <link data-trunk rel="rust" data-bin="biab-web" data-wasm-opt="z" />
+  </body>
+</html>
