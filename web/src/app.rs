@@ -673,37 +673,51 @@ impl eframe::App for App {
                 return;
             };
 
-            // Header metadata, with the big metronome beat number on the right.
-            ui.horizontal(|ui| {
-                ui.heading(if song.title.is_empty() {
-                    "(sans titre)"
-                } else {
-                    &song.title
-                });
-                ui.add_space(12.0);
-                ui.label(
-                    RichText::new(format!(
-                        "Ton : {}{}   ·   Tempo : {} BPM   ·   Style : {}",
-                        parser::pitch_class_name(song.key_pc),
-                        if song.key_minor { "m" } else { " majeur" },
-                        song.tempo_bpm,
-                        if song.style.is_empty() { "?" } else { &song.style }
-                    ))
-                    .color(Color32::from_gray(110)),
-                );
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let beats = 4u32;
-                    let beat = (current_tick / (TICKS_PER_BAR / beats)) % beats;
-                    let col = if !self.playing {
-                        Color32::from_gray(110)
-                    } else if beat == 0 {
-                        Color32::from_rgb(228, 55, 55) // downbeat = red
+            // Header metadata (wrapped, so it never forces extra width — that
+            // would resize the grid below).
+            let header_rect = ui
+                .horizontal_wrapped(|ui| {
+                    ui.heading(if song.title.is_empty() {
+                        "(sans titre)"
                     } else {
-                        Color32::from_gray(220)
-                    };
-                    ui.label(RichText::new(format!("{}", beat + 1)).size(46.0).strong().color(col));
-                });
-            });
+                        &song.title
+                    });
+                    ui.add_space(12.0);
+                    ui.label(
+                        RichText::new(format!(
+                            "Ton : {}{}   ·   Tempo : {} BPM   ·   Style : {}",
+                            parser::pitch_class_name(song.key_pc),
+                            if song.key_minor { "m" } else { " majeur" },
+                            song.tempo_bpm,
+                            if song.style.is_empty() { "?" } else { &song.style }
+                        ))
+                        .color(Color32::from_gray(110)),
+                    );
+                })
+                .response
+                .rect;
+
+            // Big metronome beat number, PAINTED at the right of the header bar
+            // (no layout space taken → the grid's width is untouched). Red on the
+            // downbeat.
+            {
+                let beats = 4u32;
+                let beat = (current_tick / (TICKS_PER_BAR / beats)) % beats;
+                let col = if !self.playing {
+                    Color32::from_gray(110)
+                } else if beat == 0 {
+                    Color32::from_rgb(228, 55, 55)
+                } else {
+                    Color32::from_gray(220)
+                };
+                ui.painter().text(
+                    egui::pos2(ui.max_rect().right() - 16.0, header_rect.center().y),
+                    egui::Align2::RIGHT_CENTER,
+                    format!("{}", beat + 1),
+                    egui::FontId::proportional(44.0),
+                    col,
+                );
+            }
             let structure = if song.form_bars > 0 {
                 let loop_part = if song.choruses > 1 {
                     format!(
