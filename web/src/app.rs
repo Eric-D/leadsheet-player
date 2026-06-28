@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::audio::{AudioEngine, Parts, PRESETS};
+use crate::cloud;
 use crate::library::{self, LibEntry, LibInbox};
 use leadsheet::{self as parser, Song, TICKS_PER_BAR};
 use crate::notation;
@@ -34,6 +35,13 @@ pub struct App {
     /// Show the instrument + volume rows (folded by default to save vertical
     /// space on phones/tablets in landscape).
     show_settings: bool,
+    /// Cloud "space" config (Supabase URL + anon key + space key), carried by
+    /// the QR/URL and persisted locally.
+    cloud: cloud::Config,
+    cloud_status: String,
+    cloud_inbox: cloud::StatusInbox,
+    cloud_loaded: bool,
+    show_qr: bool,
     show_library: bool,
     library: Vec<LibEntry>,
     library_inbox: LibInbox,
@@ -72,6 +80,11 @@ impl App {
             vol_bass: 0.9,
             show_chords: true,
             show_settings: false,
+            cloud: cloud::Config::default(),
+            cloud_status: String::new(),
+            cloud_inbox: Rc::new(RefCell::new(None)),
+            cloud_loaded: false,
+            show_qr: false,
             show_library: false,
             library: Vec::new(),
             library_inbox: Rc::new(RefCell::new(None)),
@@ -346,6 +359,21 @@ impl eframe::App for App {
             self.library = list;
         }
 
+        // Cloud space: load saved config once; if the page was opened with a
+        // `#c=<config>` link/QR, adopt it, persist it, and pull the space.
+        if !self.cloud_loaded {
+            self.cloud_loaded = true;
+            self.cloud = cloud::load_config();
+            if let Some(c) = cloud::config_in_url() {
+                self.cloud = c.clone();
+                cloud::save_config(&c);
+                cloud::sync_pull(c, self.cloud_inbox.clone(), self.library_inbox.clone(), ctx.clone());
+            }
+        }
+        if let Some(msg) = self.cloud_inbox.borrow_mut().take() {
+            self.cloud_status = msg;
+        }
+
         // Drag-and-drop import (one or many .MGU files at once).
         let dropped: Vec<(String, Vec<u8>)> = ctx.input(|i| {
             i.raw
@@ -592,6 +620,7 @@ impl eframe::App for App {
         let mut del_lib: Option<f64> = None;
         let mut commit_rename: Option<(f64, String)> = None;
         let mut start_rename: Option<(f64, String)> = None;
+        let (mut cl_save, mut cl_pull, mut cl_push, mut cl_newkey) = (false, false, false, false);
         // Filtered + sorted snapshot, so the closure doesn't borrow self.library.
         let view: Vec<LibEntry> = {
             let q = self.library_search.to_lowercase();
@@ -629,6 +658,53 @@ impl eframe::App for App {
                         .small()
                         .color(Color32::from_gray(140)),
                 );
+
+                // ☁ Shared space (Supabase) — the QR/link carries the whole config.
+                egui::CollapsingHeader::new("☁ Espace partagé (synchro)").show(ui, |ui| {
+                    egui::Grid::new("cloud_cfg").num_columns(2).show(ui, |ui| {
+                        ui.label("URL Supabase");
+                        ui.text_edit_singleline(&mut self.cloud.url);
+                        ui.end_row();
+                        ui.label("Clé anon");
+                        ui.text_edit_singleline(&mut self.cloud.anon);
+                        ui.end_row();
+                        ui.label("Clé d'espace");
+                        ui.horizontal(|ui| {
+                            ui.text_edit_singleline(&mut self.cloud.space);
+                            if ui.button("🎲").on_hover_text("Nouvel espace (clé aléatoire)").clicked() {
+                                cl_newkey = true;
+                            }
+                        });
+                        ui.end_row();
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button("💾 Enregistrer").clicked() {
+                            cl_save = true;
+                        }
+                        let on = self.cloud.is_set();
+                        if ui.add_enabled(on, egui::Button::new("⬇ Récupérer")).clicked() {
+                            cl_pull = true;
+                        }
+                        if ui.add_enabled(on, egui::Button::new("⬆ Envoyer")).clicked() {
+                            cl_push = true;
+                        }
+                        if ui.add_enabled(on, egui::Button::new("🔗 Partager (QR)")).clicked() {
+                            self.show_qr = !self.show_qr;
+                        }
+                    });
+                    if !self.cloud_status.is_empty() {
+                        ui.label(RichText::new(&self.cloud_status).small().color(Color32::from_gray(150)));
+                    }
+                    if self.show_qr && self.cloud.is_set() {
+                        let url = cloud::share_url(&self.cloud);
+                        ui.add_space(4.0);
+                        cloud::draw_qr(ui, &url, 230.0);
+                        ui.label(RichText::new("Scanne ce QR (ou partage le lien) pour ouvrir cet espace ailleurs.").small());
+                        ui.label(RichText::new(&url).small().monospace().color(Color32::from_gray(130)));
+                    }
+                });
+                ui.separator();
+
                 ui.horizontal(|ui| {
                     ui.label("🔎");
                     ui.add(
@@ -697,6 +773,21 @@ impl eframe::App for App {
                 });
             });
         self.show_library = lib_open;
+        if cl_newkey {
+            self.cloud.space = cloud::random_key();
+            cl_save = true;
+        }
+        if cl_save {
+            cloud::save_config(&self.cloud);
+        }
+        if cl_pull {
+            cloud::save_config(&self.cloud);
+            cloud::sync_pull(self.cloud.clone(), self.cloud_inbox.clone(), self.library_inbox.clone(), ctx.clone());
+        }
+        if cl_push {
+            cloud::save_config(&self.cloud);
+            cloud::sync_push(self.cloud.clone(), self.cloud_inbox.clone(), ctx.clone());
+        }
         if let Some(pair) = start_rename {
             self.renaming = Some(pair);
         }

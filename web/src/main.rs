@@ -6,6 +6,8 @@ mod app;
 #[cfg(target_arch = "wasm32")]
 mod audio;
 #[cfg(target_arch = "wasm32")]
+mod cloud;
+#[cfg(target_arch = "wasm32")]
 mod library;
 #[cfg(target_arch = "wasm32")]
 mod notation;

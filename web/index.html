@@ -130,6 +130,74 @@
         };
       })();
     </script>
+    <script>
+      // Cloud "space": the QR/URL carries the whole config (Supabase URL + anon
+      // key + space key). The app is generic; the space is a single JSON blob
+      // keyed by the space key, stored in the user's own Supabase. The local
+      // IndexedDB library is the working copy / offline cache.
+      (function () {
+        const DB = "biab", STORE = "songs";
+        function open() {
+          return new Promise((res, rej) => {
+            const r = indexedDB.open(DB, 1);
+            r.onupgradeneeded = () => { const db = r.result; if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: "id", autoIncrement: true }); };
+            r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+          });
+        }
+        function store(mode) { return open().then(db => db.transaction(STORE, mode).objectStore(STORE)); }
+        function b64enc(u8) { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
+        function b64dec(b) { const s = atob(b), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
+        function allSongs() {
+          return store("readonly").then(s => new Promise((res, rej) => {
+            const out = [], c = s.openCursor();
+            c.onsuccess = () => { const cur = c.result; if (cur) { const v = cur.value; out.push({ name: v.name, title: v.title, key: v.key, tempo: v.tempo, style: v.style, b64: b64enc(v.bytes instanceof Uint8Array ? v.bytes : new Uint8Array(v.bytes)) }); cur.continue(); } else res(out); };
+            c.onerror = () => rej(c.error);
+          }));
+        }
+        function haveTitles() {
+          return store("readonly").then(s => new Promise((res, rej) => {
+            const set = {}, c = s.openCursor();
+            c.onsuccess = () => { const cur = c.result; if (cur) { set[(cur.value.title || cur.value.name)] = 1; cur.continue(); } else res(set); };
+            c.onerror = () => rej(c.error);
+          }));
+        }
+        function addSong(g) {
+          return store("readwrite").then(s => new Promise((res, rej) => {
+            const r = s.add({ name: g.name, bytes: b64dec(g.b64), title: g.title, key: g.key, tempo: g.tempo, style: g.style, createdAt: Date.now() });
+            r.onsuccess = () => res(true); r.onerror = () => rej(r.error);
+          }));
+        }
+        function rpc(url, anon, fn, body) {
+          return fetch(url.replace(/\/+$/, "") + "/rest/v1/rpc/" + fn, {
+            method: "POST",
+            headers: { apikey: anon, Authorization: "Bearer " + anon, "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }).then(function (r) { return r.ok ? r.json() : Promise.reject("HTTP " + r.status); });
+        }
+        window.cloud = {
+          // Upload the whole local library to the space.
+          push: function (url, anon, space) {
+            return allSongs().then(function (songs) { return rpc(url, anon, "space_save", { k: space, d: songs }).then(function () { return songs.length; }); });
+          },
+          // Download the space's songs into the local library (skip titles we already have).
+          pull: function (url, anon, space) {
+            return rpc(url, anon, "space_get", { k: space }).then(function (data) {
+              if (!Array.isArray(data)) return 0;
+              return haveTitles().then(function (have) {
+                var chain = Promise.resolve(), n = 0;
+                data.forEach(function (g) { var t = g.title || g.name; if (!have[t]) { chain = chain.then(function () { return addSong(g); }); n++; } });
+                return chain.then(function () { return n; });
+              });
+            });
+          },
+        };
+        // Config persistence (localStorage) — stored as a JSON string.
+        window.cloudCfg = {
+          load: function () { return localStorage.getItem("cloudCfg") || ""; },
+          save: function (s) { try { localStorage.setItem("cloudCfg", s); } catch (e) {} },
+        };
+      })();
+    </script>
     <link data-trunk rel="rust" data-bin="biab-web" data-wasm-opt="z" />
   </body>
 </html>
