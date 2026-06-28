@@ -26,8 +26,9 @@ fn form_bars(song: &Song) -> u16 {
 /// BiaB-style chord chart: four bars per row, chord names placed at the beat
 /// where they start (several per bar for syncopated songs). The current bar is
 /// highlighted during playback. Clicking returns the tick to seek playback to.
-pub fn chord_chart(ui: &mut Ui, song: &Song, current_bar: u16) -> Option<u32> {
+pub fn chord_chart(ui: &mut Ui, song: &Song, current_bar: u16, follow: bool) -> Option<u32> {
     let bars = form_bars(song);
+    let mut active_cell: Option<Rect> = None;
     let cols = 4u16;
     let rows = (bars + cols - 1) / cols;
     let avail_w = ui.available_width().max(320.0);
@@ -70,6 +71,7 @@ pub fn chord_chart(ui: &mut Ui, song: &Song, current_bar: u16) -> Option<u32> {
         );
         if bar == current_bar {
             painter.rect_filled(cell, 0.0, HILITE);
+            active_cell = Some(cell);
         }
         painter.rect_stroke(cell, 0.0, Stroke::new(1.0, Color32::from_gray(170)));
 
@@ -167,7 +169,34 @@ pub fn chord_chart(ui: &mut Ui, song: &Song, current_bar: u16) -> Option<u32> {
         );
     }
 
+    // Auto-follow: keep the active bar in the top third of the viewport.
+    if follow {
+        if let Some(cell) = active_cell {
+            follow_into_view(ui, cell, false);
+        }
+    }
+
     clicked_tick
+}
+
+/// Scroll the enclosing `ScrollArea` so `target` sits in the first third of the
+/// viewport (top third when `horizontal` is false, left third when true).
+fn follow_into_view(ui: &Ui, target: Rect, horizontal: bool) {
+    let clip = ui.clip_rect();
+    let shifted = if horizontal {
+        let s = clip.width() / 3.0;
+        Rect::from_min_max(
+            Pos2::new(target.left() - s, target.top()),
+            Pos2::new(target.right() - s, target.bottom()),
+        )
+    } else {
+        let s = clip.height() / 3.0;
+        Rect::from_min_max(
+            Pos2::new(target.left(), target.top() - s),
+            Pos2::new(target.right(), target.bottom() - s),
+        )
+    };
+    ui.scroll_to_rect(shifted, Some(egui::Align::Min));
 }
 
 // ---- Staff notation -------------------------------------------------------
@@ -185,7 +214,7 @@ fn staff_step(pitch: u8) -> i32 {
 }
 
 /// Treble-clef melody staff. Notes are spaced by time; barlines every 4 beats.
-pub fn staff(ui: &mut Ui, song: &Song, current_tick: u32) {
+pub fn staff(ui: &mut Ui, song: &Song, current_tick: u32, follow: bool) {
     if song.melody.is_empty() {
         ui.label("Pas de mélodie dans ce fichier.");
         return;
@@ -278,6 +307,9 @@ pub fn staff(ui: &mut Ui, song: &Song, current_tick: u32) {
             o.y + mid_y - 6.0..=baseline + 12.0,
             Stroke::new(1.5, ACCENT),
         );
+        if follow {
+            follow_into_view(ui, Rect::from_min_max(Pos2::new(x, o.y), Pos2::new(x + 1.0, o.y + height)), true);
+        }
     }
 }
 
@@ -332,7 +364,7 @@ fn pitch_to_tab(pitch: u8) -> Option<(usize, u8)> {
 }
 
 /// Guitar tablature of the melody: six lines, fret numbers placed by time.
-pub fn tablature(ui: &mut Ui, song: &Song, current_tick: u32) {
+pub fn tablature(ui: &mut Ui, song: &Song, current_tick: u32, follow: bool) {
     if song.melody.is_empty() {
         ui.label("Pas de mélodie à tabuler.");
         return;
@@ -407,6 +439,9 @@ pub fn tablature(ui: &mut Ui, song: &Song, current_tick: u32) {
     if current_tick > 0 && current_tick < total_ticks {
         let x = x_of(current_tick);
         painter.vline(x, y_of(0) - 6.0..=y_of(5) + 6.0, Stroke::new(1.5, ACCENT));
+        if follow {
+            follow_into_view(ui, Rect::from_min_max(Pos2::new(x, o.y), Pos2::new(x + 1.0, o.y + height)), true);
+        }
     }
 }
 

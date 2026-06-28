@@ -825,14 +825,15 @@ impl eframe::App for App {
                 );
             }
 
+            let follow = self.playing; // auto-scroll only during playback
             egui::ScrollArea::both().show(ui, |ui| match self.view {
                 View::Chart => {
-                    if let Some(tick) = notation::chord_chart(ui, song, current_bar) {
+                    if let Some(tick) = notation::chord_chart(ui, song, current_bar, follow) {
                         seek_tick = Some(tick);
                     }
                 }
-                View::Staff => notation::staff(ui, song, current_tick),
-                View::Tab => notation::tablature(ui, song, current_tick),
+                View::Staff => notation::staff(ui, song, current_tick, follow),
+                View::Tab => notation::tablature(ui, song, current_tick, follow),
             });
         });
 
