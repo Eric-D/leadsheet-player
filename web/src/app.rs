@@ -654,24 +654,30 @@ impl eframe::App for App {
             .open(&mut lib_open)
             .collapsible(false)
             .resizable(false)
-            .fixed_size([
-                ctx.screen_rect().width() - 20.0,
-                ctx.screen_rect().height() - 20.0,
-            ])
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .title_bar(false)
+            .fixed_size([ctx.screen_rect().width(), ctx.screen_rect().height()])
+            .anchor(egui::Align2::LEFT_TOP, [0.0, 0.0])
+            // Full-bleed window (no surrounding strip); content is inset by the
+            // frame margin so icons aren't flush to the rounded edge.
+            .frame(egui::Frame::window(&ctx.style()).inner_margin(egui::Margin {
+                left: 10.0,
+                right: 14.0,
+                top: 12.0,
+                bottom: 10.0,
+            }))
             .show(ctx, |ui| {
-                // Easy-to-reach close button (the title-bar ✕ sits in the
-                // rounded screen corner and is hard to tap on phones).
+                // Own header (no title bar): title + easy-to-reach close button.
                 ui.horizontal(|ui| {
                     if ui.add(egui::Button::new(RichText::new("✕ Fermer").size(16.0))).clicked() {
                         close_lib = true;
                     }
-                    ui.label(
-                        RichText::new("Stockée dans ce navigateur (hors-ligne).")
-                            .small()
-                            .color(Color32::from_gray(140)),
-                    );
+                    ui.label(RichText::new("📚 Bibliothèque").strong());
                 });
+                ui.label(
+                    RichText::new("Stockée dans ce navigateur (hors-ligne).")
+                        .small()
+                        .color(Color32::from_gray(140)),
+                );
 
                 // Add the currently-loaded song to the library.
                 let can_add = self.current_bytes.is_some() && self.song.is_some();
