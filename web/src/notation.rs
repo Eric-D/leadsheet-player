@@ -182,15 +182,17 @@ pub fn chord_chart(ui: &mut Ui, song: &Song, current_bar: u16, follow: bool) -> 
 /// Scroll the enclosing `ScrollArea` so `target` sits in the first third of the
 /// viewport (top third when `horizontal` is false, left third when true).
 fn follow_into_view(ui: &Ui, target: Rect, horizontal: bool) {
+    // Keep the active element this far into the viewport (0.25 = first quarter).
+    const POS: f32 = 0.25;
     let clip = ui.clip_rect();
     let shifted = if horizontal {
-        let s = clip.width() / 3.0;
+        let s = clip.width() * POS;
         Rect::from_min_max(
             Pos2::new(target.left() - s, target.top()),
             Pos2::new(target.right() - s, target.bottom()),
         )
     } else {
-        let s = clip.height() / 3.0;
+        let s = clip.height() * POS;
         Rect::from_min_max(
             Pos2::new(target.left(), target.top() - s),
             Pos2::new(target.right(), target.bottom() - s),
