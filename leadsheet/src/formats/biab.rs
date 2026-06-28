@@ -96,6 +96,7 @@ fn is_record(d: &[u8], i: usize) -> bool {
     if i + 12 > d.len() {
         return false;
     }
+    let dur = u32::from_le_bytes([d[i + 8], d[i + 9], d[i + 10], d[i + 11]]);
     d[i + 2] == 0
         && d[i + 3] == 0
         && d[i + 4] == 0x90
@@ -103,6 +104,10 @@ fn is_record(d: &[u8], i: usize) -> bool {
         && (1..=127).contains(&d[i + 5]) // plausible pitch
         && (1..=127).contains(&d[i + 6]) // plausible velocity
         && d[i + 5] >= 24 // melodies live above ~C1; filters false hits
+        // A real melody note lasts at most a few bars. A wild duration means we
+        // matched chord/structure bytes by accident — reject it (it would
+        // otherwise drone in the audio and blow up the staff/tab width).
+        && (1..=4 * TICKS_PER_BAR).contains(&dur)
 }
 
 pub fn parse(data: &[u8]) -> Result<Song, ParseError> {
