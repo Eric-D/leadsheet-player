@@ -131,6 +131,28 @@
       })();
     </script>
     <script>
+      // One-step file open: a native <input type=file>, clicked straight away
+      // (within the tap's transient activation) — no extra "Ok" modal like rfd.
+      // The picked file lands in window.__pickedFile; the app polls it.
+      window.__openFile = function () {
+        var input = document.createElement("input");
+        input.type = "file";
+        input.onchange = function () {
+          var f = input.files && input.files[0];
+          if (!f) return;
+          f.arrayBuffer().then(function (buf) {
+            window.__pickedFile = { name: f.name, bytes: new Uint8Array(buf) };
+          });
+        };
+        input.click();
+      };
+      window.__takePicked = function () {
+        var p = window.__pickedFile || null;
+        window.__pickedFile = null;
+        return p;
+      };
+    </script>
+    <script>
       // Cloud "space": the QR/URL carries the whole config (Supabase URL + anon
       // key + space key). The app is generic; the space is a single JSON blob
       // keyed by the space key, stored in the user's own Supabase. The local

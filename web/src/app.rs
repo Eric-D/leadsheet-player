@@ -9,6 +9,17 @@ use crate::library::{self, LibEntry, LibInbox};
 use leadsheet::{self as parser, Song, TICKS_PER_BAR};
 use crate::notation;
 use egui::{Color32, RichText};
+use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+extern "C" {
+    /// Open the native file picker straight away (one-step, no rfd modal).
+    #[wasm_bindgen(js_name = __openFile)]
+    fn js_open_file();
+    /// Take the picked file ({name, bytes}) if any, else null.
+    #[wasm_bindgen(js_name = __takePicked)]
+    fn js_take_picked() -> JsValue;
+}
 
 #[derive(PartialEq, Clone, Copy)]
 enum View {
@@ -55,6 +66,8 @@ pub struct App {
     playing: bool,
     /// egui time of the last seek, to debounce rapid chord clicks.
     last_seek_t: f64,
+    /// While > now, poll for a file picked via the native input.
+    file_poll_until: f64,
     /// Play a one-bar drum count-in before the song starts (like BiaB).
     count_in: bool,
     error: Option<String>,
@@ -95,6 +108,7 @@ impl App {
             current_bytes: None,
             playing: false,
             last_seek_t: 0.0,
+            file_poll_until: 0.0,
             count_in: false,
             error: None,
         };
@@ -352,6 +366,22 @@ impl eframe::App for App {
             );
         }
 
+        // Poll the native file input (read asynchronously after selection).
+        if ctx.input(|i| i.time) < self.file_poll_until {
+            ctx.request_repaint_after(std::time::Duration::from_millis(150));
+            let picked = js_take_picked();
+            if !picked.is_null() && !picked.is_undefined() {
+                let name = js_sys::Reflect::get(&picked, &JsValue::from_str("name"))
+                    .ok()
+                    .and_then(|v| v.as_string())
+                    .unwrap_or_default();
+                if let Ok(b) = js_sys::Reflect::get(&picked, &JsValue::from_str("bytes")) {
+                    *self.inbox.borrow_mut() = Some((name, js_sys::Uint8Array::new(&b).to_vec()));
+                }
+                self.file_poll_until = 0.0;
+            }
+        }
+
         // Drain any file picked asynchronously (file dialog OR library load).
         let pending = self.inbox.borrow_mut().take();
         if let Some((name, bytes)) = pending {
@@ -442,18 +472,10 @@ impl eframe::App for App {
             ui.add_space(4.0);
             ui.horizontal_wrapped(|ui| {
                 if ui.button("📂  Ouvrir").clicked() {
-                    let inbox = self.inbox.clone();
-                    let ctx2 = ctx.clone();
-                    // No extension filter: just the file explorer — pick a file
-                    // and it opens, cancel and nothing happens. (Mobile pickers
-                    // hide .MGU files when an unknown-MIME filter is set.)
-                    wasm_bindgen_futures::spawn_local(async move {
-                        if let Some(file) = rfd::AsyncFileDialog::new().pick_file().await {
-                            let bytes = file.read().await;
-                            *inbox.borrow_mut() = Some((file.file_name(), bytes));
-                            ctx2.request_repaint();
-                        }
-                    });
+                    // Native picker, one step (no Ok modal). Poll for the result
+                    // for a while (the file is read asynchronously).
+                    js_open_file();
+                    self.file_poll_until = ctx.input(|i| i.time) + 120.0;
                 }
                 if library::available() {
                     ui.toggle_value(&mut self.show_library, "📚 Bibliothèque");
