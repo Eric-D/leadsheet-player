@@ -363,6 +363,13 @@ impl eframe::App for App {
         // Tick requested via a chord-chart click (applied after the UI borrow).
         let mut seek_tick: Option<u32> = None;
 
+        // Playhead tick for the beat counter / clock in the transport row.
+        let play_tick = if self.playing {
+            self.audio.as_ref().map_or(0, |a| a.position_ticks())
+        } else {
+            0
+        };
+
         egui::TopBottomPanel::top("bar").show(ctx, |ui| {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
@@ -445,6 +452,33 @@ impl eframe::App for App {
                 if let Some(s) = &self.song {
                     let bpm = (s.tempo_bpm as f32 * self.tempo_factor).round() as i32;
                     ui.label(format!("≈ {bpm} BPM"));
+
+                    ui.separator();
+                    // Beat counter (métronome visuel) : le premier temps en rouge.
+                    let beats = 4u32;
+                    let unit = TICKS_PER_BAR / beats; // ticks per beat
+                    let beat = (play_tick / unit) % beats;
+                    for b in 0..beats {
+                        let active = self.playing && b == beat;
+                        let base = if b == 0 {
+                            Color32::from_rgb(225, 65, 65) // downbeat = red
+                        } else {
+                            Color32::from_gray(170)
+                        };
+                        let col = if active { base } else { base.gamma_multiply(0.32) };
+                        let mut t = RichText::new(format!("{}", b + 1)).color(col).monospace();
+                        if active {
+                            t = t.strong().size(17.0);
+                        }
+                        ui.label(t);
+                    }
+
+                    // Elapsed-time clock (MM:SS).
+                    let actual_bpm = (s.tempo_bpm as f32 * self.tempo_factor).max(1.0) as f64;
+                    let secs = play_tick as f64 * 60.0 / (leadsheet::PPQ as f64 * actual_bpm);
+                    let secs = secs as u32;
+                    ui.separator();
+                    ui.monospace(format!("{}:{:02}", secs / 60, secs % 60));
                 }
             });
 
