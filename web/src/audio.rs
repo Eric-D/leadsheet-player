@@ -80,6 +80,11 @@ pub struct AudioEngine {
     sec_per_tick: f64,
     end_tick: u32,
     scheduled: bool,
+    /// Ticks in one form repetition (for looping the accompaniment).
+    form_ticks: u32,
+    /// Real end of the song; we schedule only up to `window_end_tick` at a time.
+    song_end_tick: u32,
+    window_end_tick: u32,
 }
 
 fn midi_to_freq(pitch: u8) -> f32 {
@@ -114,16 +119,25 @@ impl AudioEngine {
             sec_per_tick: 0.0,
             end_tick: 0,
             scheduled: false,
+            form_ticks: 0,
+            song_end_tick: 0,
+            window_end_tick: 0,
         })
     }
 
+    /// Smoothly approach a new gain (≈60 ms) so volume/part changes never pop.
+    fn ramp(&self, g: &web_sys::AudioParam, v: f32) {
+        let t = self.ctx.current_time();
+        let _ = g.cancel_scheduled_values(t);
+        let _ = g.set_target_at_time(v.max(0.0001) as f32, t, 0.02);
+    }
     pub fn set_master_gain(&self, v: f32) {
-        self.master.gain().set_value(v);
+        self.ramp(&self.master.gain(), v);
     }
     pub fn set_part_gains(&self, melody: f32, chords: f32, bass: f32) {
-        self.mel_bus.gain().set_value(melody);
-        self.chd_bus.gain().set_value(chords);
-        self.bas_bus.gain().set_value(bass);
+        self.ramp(&self.mel_bus.gain(), melody);
+        self.ramp(&self.chd_bus.gain(), chords);
+        self.ramp(&self.bas_bus.gain(), bass);
     }
 
     fn osc(&self, bus: &GainNode, freq: f32, start: f64, dur: f64, peak: f32, instr: &Instrument) -> Option<(OscillatorNode, GainNode)> {
@@ -169,77 +183,118 @@ impl AudioEngine {
         }
     }
 
-    /// Map an absolute song event to (when, dur) relative to `now`, clipped so
-    /// that events overlapping the seek point start immediately. Returns None
-    /// for events that are already over at `start_tick`.
-    fn place(&self, abs_tick: u32, dur_ticks: u32, start_tick: u32, now: f64, spt: f64) -> Option<(f64, f64)> {
+    /// Map an absolute song tick to a wall-clock time on the shared timeline
+    /// (origin/origin_tick), clipping a note overlapping `floor` to start there.
+    /// Returns None for a note already finished before `floor`.
+    fn place(&self, abs_tick: u32, dur_ticks: u32, floor: u32) -> Option<(f64, f64)> {
         let end = abs_tick + dur_ticks;
-        if end <= start_tick {
+        if end <= floor {
             return None;
         }
-        let eff = abs_tick.max(start_tick);
-        let when = now + (eff - start_tick) as f64 * spt;
-        let dur = (end - eff) as f64 * spt;
+        let eff = abs_tick.max(floor);
+        let when = self.origin + (eff as f64 - self.origin_tick as f64) * self.sec_per_tick;
+        let dur = (end - eff) as f64 * self.sec_per_tick;
         Some((when, dur.max(0.03)))
     }
 
-    /// (Re)build the schedule from `start_tick` for the chosen parts and tempo.
-    pub fn schedule(&mut self, song: &Song, tempo_factor: f32, parts: &Parts, start_tick: u32) {
-        self.clear();
-        let bpm = (song.tempo_bpm as f32 * tempo_factor).max(1.0);
-        let spt = 60.0 / (bpm as f64 * PPQ as f64);
-        let now = self.ctx.current_time() + 0.12;
-        self.origin = now;
-        self.origin_tick = start_tick;
-        self.sec_per_tick = spt;
+    /// Seconds of music scheduled ahead at once. A bounded window means far
+    /// fewer live oscillators, so a reschedule (instrument/part switch) is cheap
+    /// and doesn't spike the CPU / crackle.
+    const HORIZON_SEC: f64 = 20.0;
+    fn horizon_ticks(&self) -> u32 {
+        (Self::HORIZON_SEC / self.sec_per_tick.max(1e-9)) as u32
+    }
 
-        let melody_end = song.melody.iter().map(|n| n.tick + n.dur).max().unwrap_or(0);
-
+    /// Schedule every note/accompaniment event starting in `[from, to)`. With
+    /// `clip` (the first window) also include a note already sounding at `from`.
+    fn schedule_window(&mut self, song: &Song, parts: &Parts, from: u32, to: u32, clip: bool) {
+        let want = |tick: u32, dur: u32| tick < to && (if clip { tick + dur > from } else { tick >= from });
         if parts.melody_on {
             let instr = PRESETS[parts.melody_instr.min(PRESETS.len() - 1)];
             for n in &song.melody {
-                if let Some((when, dur)) = self.place(n.tick, n.dur, start_tick, now, spt) {
-                    let peak = 0.18 + (n.vel as f32 / 127.0) * 0.12;
-                    self.note(BusKind::Melody, n.pitch, when, dur, peak, &instr);
+                if n.tick >= to {
+                    break;
+                }
+                if want(n.tick, n.dur) {
+                    if let Some((when, dur)) = self.place(n.tick, n.dur, from) {
+                        let peak = 0.18 + (n.vel as f32 / 127.0) * 0.12;
+                        self.note(BusKind::Melody, n.pitch, when, dur, peak, &instr);
+                    }
                 }
             }
         }
-
-        // Accompaniment comes from the `leadsheet` arranger: it lays out bass +
-        // comped chords on a style's pattern beats, and makes substyle-B sections
-        // busier using the decoded A/B part markers. We keep the user's per-part
-        // instrument choice, on/off toggles and gain buses.
-        let cells = chord_cells(song);
-        let form_ticks = cells.iter().map(|(s, d, _)| s + d).max().unwrap_or(0);
-        let total_end = melody_end.max(form_ticks);
-        if (parts.chords_on || parts.bass_on) && form_ticks > 0 {
+        // Accompaniment from the `leadsheet` arranger (bass + comped chords on
+        // the style's beats, busier in substyle B via the A/B markers).
+        if (parts.chords_on || parts.bass_on) && self.form_ticks > 0 {
             use leadsheet::arrange::Part as AP;
             let chord_i = PRESETS[parts.chords_instr.min(PRESETS.len() - 1)];
             let bass_i = PRESETS[parts.bass_instr.min(PRESETS.len() - 1)];
             let events = leadsheet::arrange::arrange(song, &leadsheet::style::Style::default());
-            let mut base = 0u32;
-            while base < total_end {
+            let form = self.form_ticks;
+            let mut base = (from / form) * form;
+            while base < to {
                 for e in &events {
+                    let abs = base + e.tick;
+                    if !want(abs, e.dur) {
+                        continue;
+                    }
                     match e.part {
                         AP::Comp if parts.chords_on => {
-                            if let Some((when, dur)) = self.place(base + e.tick, e.dur, start_tick, now, spt) {
+                            if let Some((when, dur)) = self.place(abs, e.dur, from) {
                                 self.note(BusKind::Chords, e.pitch, when, dur.min(2.0), 0.06, &chord_i);
                             }
                         }
                         AP::Bass if parts.bass_on => {
-                            if let Some((when, dur)) = self.place(base + e.tick, e.dur, start_tick, now, spt) {
+                            if let Some((when, dur)) = self.place(abs, e.dur, from) {
                                 self.note(BusKind::Bass, e.pitch, when, dur.min(1.2), 0.13, &bass_i);
                             }
                         }
                         _ => {}
                     }
                 }
-                base += form_ticks;
+                base += form;
             }
         }
+    }
 
-        self.end_tick = total_end;
+    /// (Re)build the schedule from `start_tick`, but only the first window's
+    /// worth of notes; `maybe_extend` appends the rest as playback advances.
+    pub fn schedule(&mut self, song: &Song, tempo_factor: f32, parts: &Parts, start_tick: u32) {
+        self.clear();
+        let bpm = (song.tempo_bpm as f32 * tempo_factor).max(1.0);
+        self.sec_per_tick = 60.0 / (bpm as f64 * PPQ as f64);
+        self.origin = self.ctx.current_time() + 0.12;
+        self.origin_tick = start_tick;
+
+        let melody_end = song.melody.iter().map(|n| n.tick + n.dur).max().unwrap_or(0);
+        let cells = chord_cells(song);
+        self.form_ticks = cells.iter().map(|(s, d, _)| s + d).max().unwrap_or(0);
+        let accompaniment = (parts.chords_on || parts.bass_on) && self.form_ticks > 0;
+        let song_end = if accompaniment { melody_end.max(self.form_ticks) } else { melody_end };
+
+        let window_end = song_end.min(start_tick + self.horizon_ticks());
+        self.schedule_window(song, parts, start_tick, window_end, true);
+
+        self.song_end_tick = song_end;
+        self.window_end_tick = window_end;
+        self.end_tick = song_end;
         self.scheduled = true;
+    }
+
+    /// Append the next window once playback nears the scheduled horizon. Appends
+    /// on the existing timeline (no clear), so it's seamless. Call every frame.
+    pub fn maybe_extend(&mut self, song: &Song, parts: &Parts) {
+        if !self.scheduled || self.window_end_tick >= self.song_end_tick {
+            return;
+        }
+        let refill = (6.0 / self.sec_per_tick.max(1e-9)) as u32;
+        if self.position_ticks() + refill < self.window_end_tick {
+            return;
+        }
+        let to = self.song_end_tick.min(self.window_end_tick + self.horizon_ticks());
+        let from = self.window_end_tick;
+        self.schedule_window(song, parts, from, to, false);
+        self.window_end_tick = to;
     }
 
     pub fn resume(&self) {

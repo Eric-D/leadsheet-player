@@ -341,7 +341,9 @@ impl eframe::App for App {
         let mut current_tick = 0u32;
         let mut finished = false;
         if self.playing {
-            if let Some(a) = &self.audio {
+            let parts = self.parts;
+            if let (Some(a), Some(song)) = (&mut self.audio, &self.song) {
+                a.maybe_extend(song, &parts); // append the next window seamlessly
                 current_tick = a.position_ticks();
                 finished = a.finished();
             }
