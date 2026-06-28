@@ -654,30 +654,21 @@ impl eframe::App for App {
             .open(&mut lib_open)
             .collapsible(false)
             .resizable(false)
-            .title_bar(false)
             .fixed_size([ctx.screen_rect().width(), ctx.screen_rect().height()])
             .anchor(egui::Align2::LEFT_TOP, [0.0, 0.0])
-            // Full-bleed window (no surrounding strip); content is inset by the
-            // frame margin so icons aren't flush to the rounded edge.
-            .frame(egui::Frame::window(&ctx.style()).inner_margin(egui::Margin {
-                left: 10.0,
-                right: 14.0,
-                top: 12.0,
-                bottom: 10.0,
-            }))
             .show(ctx, |ui| {
-                // Own header (no title bar): title + easy-to-reach close button.
+                // Easy-to-reach close button (the title-bar ✕ in the rounded
+                // corner is hard to tap on phones).
                 ui.horizontal(|ui| {
                     if ui.add(egui::Button::new(RichText::new("✕ Fermer").size(16.0))).clicked() {
                         close_lib = true;
                     }
-                    ui.label(RichText::new("📚 Bibliothèque").strong());
+                    ui.label(
+                        RichText::new("Stockée dans ce navigateur (hors-ligne).")
+                            .small()
+                            .color(Color32::from_gray(140)),
+                    );
                 });
-                ui.label(
-                    RichText::new("Stockée dans ce navigateur (hors-ligne).")
-                        .small()
-                        .color(Color32::from_gray(140)),
-                );
 
                 // Add the currently-loaded song to the library.
                 let can_add = self.current_bytes.is_some() && self.song.is_some();
@@ -791,6 +782,7 @@ impl eframe::App for App {
                                 _ => {
                                     // Edit/delete pinned right; title + meta fill the middle.
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        ui.add_space(10.0); // keep 🗑/✏ off the rounded right edge
                                         if ui.button("🗑").on_hover_text("Supprimer").clicked() {
                                             del_lib = Some(e.id);
                                         }
