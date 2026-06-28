@@ -453,20 +453,6 @@ impl eframe::App for App {
                     let bpm = (s.tempo_bpm as f32 * self.tempo_factor).round() as i32;
                     ui.label(format!("≈ {bpm} BPM"));
 
-                    ui.separator();
-                    // Beat counter: just the current beat, big (red on the downbeat).
-                    let beats = 4u32;
-                    let unit = TICKS_PER_BAR / beats; // ticks per beat
-                    let beat = (play_tick / unit) % beats;
-                    let col = if !self.playing {
-                        Color32::from_gray(110)
-                    } else if beat == 0 {
-                        Color32::from_rgb(228, 55, 55) // downbeat = red
-                    } else {
-                        Color32::from_gray(210)
-                    };
-                    ui.label(RichText::new(format!("{}", beat + 1)).size(24.0).strong().color(col));
-
                     // Elapsed-time clock (MM:SS).
                     let actual_bpm = (s.tempo_bpm as f32 * self.tempo_factor).max(1.0) as f64;
                     let secs = play_tick as f64 * 60.0 / (leadsheet::PPQ as f64 * actual_bpm);
@@ -758,6 +744,21 @@ impl eframe::App for App {
                         seek_tick = Some((f * total as f32) as u32);
                     }
                 }
+            }
+
+            // Big metronome beat number above the grid (red on the downbeat).
+            {
+                let beats = 4u32;
+                let unit = TICKS_PER_BAR / beats;
+                let beat = (current_tick / unit) % beats;
+                let col = if !self.playing {
+                    Color32::from_gray(110)
+                } else if beat == 0 {
+                    Color32::from_rgb(228, 55, 55)
+                } else {
+                    Color32::from_gray(220)
+                };
+                ui.label(RichText::new(format!("{}", beat + 1)).size(40.0).strong().color(col));
             }
             ui.add_space(4.0);
 
