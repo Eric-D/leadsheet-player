@@ -376,7 +376,7 @@ impl eframe::App for App {
 
         egui::TopBottomPanel::top("bar").show(ctx, |ui| {
             ui.add_space(4.0);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if ui.button("📂  Ouvrir .MGU / .SGU").clicked() {
                     let inbox = self.inbox.clone();
                     let ctx2 = ctx.clone();
