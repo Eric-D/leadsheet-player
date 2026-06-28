@@ -117,7 +117,7 @@ mod tests {
     #[test]
     fn minor_chord_voices_minor_third_not_major() {
         let mut s = Song::default();
-        s.chords = vec![Chord { bar: 1, beat: 0, tick: 0, text: "Em".into(), root: 4, ext: 16, bass: 255 }];
+        s.chords = vec![Chord { bar: 1, beat: 0, tick: 0, text: "Em".into(), root: 4, ext: 16, bass: 255, rest: 0 }];
         let comp: Vec<u8> = arrange(&s, &Style::default())
             .into_iter()
             .filter(|e| e.part == Part::Comp)

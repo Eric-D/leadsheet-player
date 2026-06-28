@@ -160,12 +160,18 @@ pub fn chord_chart(ui: &mut Ui, song: &Song, current_bar: u16, follow: bool) -> 
         let multi = per_bar[c.bar as usize] > 1;
         let font = if multi { 18.0 } else { 30.0 };
         let fx = (c.beat as f32 / 4.0) * (cell_w - 16.0);
+        // Rest/shot/hold: append the dots and colour the chord red, like BiaB.
+        let (txt, col) = if c.rest > 0 {
+            (format!("{}{}", c.text, ".".repeat(c.rest as usize)), ACCENT)
+        } else {
+            (c.text.clone(), INK)
+        };
         painter.text(
             Pos2::new(cell.min.x + 8.0 + fx, cell.center().y + 4.0),
             Align2::LEFT_CENTER,
-            &c.text,
+            &txt,
             FontId::proportional(font),
-            INK,
+            col,
         );
     }
 

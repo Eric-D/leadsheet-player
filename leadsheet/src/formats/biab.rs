@@ -403,6 +403,16 @@ mod tests {
         assert_eq!(m(25), Some(2)); // bar 25 = part B
     }
 
+    // Rest/shot/hold articulation (newly reverse-engineered, undocumented): the
+    // original baila has a "shot" (B..) on bar 31.
+    #[test]
+    fn baila_shot_bar31() {
+        let Some(s) = load("baila_morena.MGU") else { return };
+        let c = s.chords.iter().find(|c| c.bar == 31).expect("bar 31");
+        assert_eq!(c.text, "B");
+        assert_eq!(c.rest, 2); // 2 dots = shot
+    }
+
     // A genuinely minor key (choses_simples key byte ≥ 18 → Em).
     #[test]
     fn choses_simples_minor_key() {
@@ -597,7 +607,34 @@ pub fn decode(
             root: rpc,
             ext,
             bass: if bass >= 1 { root_pc(bass) } else { 255 },
+            rest: 0,
         });
+    }
+
+    // Rest / shot / hold articulations are stored after the chords as
+    // `[marker][value][00]` entries, where `marker = beat_index + 10` and the
+    // value's bits 5-6 give the type. Cross-referenced against real chord beats
+    // so we never match stray bytes. (Reverse-engineered from BiaB — undocumented.)
+    for i in idx..data.len().saturating_sub(2) {
+        if data[i + 2] != 0 {
+            continue;
+        }
+        let dots = match data[i + 1] {
+            0x3f => 1, // rest  "."
+            0x1f => 2, // shot  ".."
+            0x5f => 3, // hold  "..."
+            _ => continue,
+        };
+        let beat = data[i] as i32 - 10;
+        if beat < 0 {
+            continue;
+        }
+        if let Some(c) = chords
+            .iter_mut()
+            .find(|c| (c.bar as i32 - 1) * z as i32 + c.beat as i32 == beat)
+        {
+            c.rest = dots;
+        }
     }
 
     // Chorus record `[begin][end][repeats]` sits at (or just after) idx — there

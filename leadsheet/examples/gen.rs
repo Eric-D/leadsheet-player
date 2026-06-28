@@ -15,6 +15,7 @@ fn ch(beat: u32, root: u8, ext: u8, bass: u8) -> Chord {
         root,
         ext,
         bass,
+        rest: 0,
     }
 }
 

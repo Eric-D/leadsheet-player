@@ -35,6 +35,9 @@ pub struct Chord {
     pub ext: u8,
     /// Slash-bass pitch class 0..=11, or 255 if no slash.
     pub bass: u8,
+    /// Articulation dots, à la Band-in-a-Box: 0 = none, 1 = rest (`.`),
+    /// 2 = shot (`..`), 3 = hold (`...`).
+    pub rest: u8,
 }
 
 #[derive(Clone, Debug, Default)]
