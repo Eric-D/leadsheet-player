@@ -243,16 +243,49 @@ impl AudioEngine {
         }
         // Accompaniment from the `leadsheet` arranger (bass + comped chords on
         // the style's beats, busier in substyle B via the A/B markers).
+        //
+        // Lay it out on the LINEAR performance, mapping each played bar to its
+        // chart bar via the song's structure — intro once, chorus ×N, ending
+        // once — so a song with an intro/ending repeats only the chorus (not the
+        // whole form), exactly like the chart's repeat brackets.
         if (parts.chords_on || parts.bass_on) && self.form_ticks > 0 {
             use leadsheet::arrange::Part as AP;
             let chord_i = PRESETS[parts.chords_instr.min(PRESETS.len() - 1)];
             let bass_i = PRESETS[parts.bass_instr.min(PRESETS.len() - 1)];
             let events = leadsheet::arrange::arrange(song, &leadsheet::style::Style::default());
-            let form = self.form_ticks;
-            let mut base = 0u32;
-            while base < self.end_tick {
-                for e in &events {
-                    let abs = base + e.tick;
+            let bar = leadsheet::TICKS_PER_BAR;
+
+            let cb = song.chorus_begin.max(1) as u32;
+            let ce = song.chorus_end.max(song.chorus_begin).max(1) as u32;
+            let form_bars = (song.form_bars as u32).max(ce).max(self.form_ticks / bar);
+            let clen = (ce + 1 - cb).max(1);
+            let choruses = song.choruses.max(1) as u32;
+            // The performance is as long as the (expanded) melody when there is
+            // one, otherwise the structural length intro + chorus×N + ending.
+            let structural = (cb - 1) + clen * choruses + (form_bars - ce);
+            let melody_bars = song
+                .melody
+                .iter()
+                .map(|n| (n.tick + n.dur + bar - 1) / bar)
+                .max()
+                .unwrap_or(0);
+            let total_bars = melody_bars.max(structural).max(form_bars);
+
+            // Index the form's events by their chart bar (0-based).
+            let mut by_bar: Vec<Vec<usize>> = vec![Vec::new(); (form_bars + 1) as usize];
+            for (i, e) in events.iter().enumerate() {
+                let b = (e.tick / bar) as usize;
+                if b < by_bar.len() {
+                    by_bar[b].push(i);
+                }
+            }
+
+            for lb in 0..total_bars {
+                let cbar = chart_bar0(lb, cb, ce, total_bars, form_bars);
+                let Some(idxs) = by_bar.get(cbar as usize) else { continue };
+                for &i in idxs {
+                    let e = &events[i];
+                    let abs = lb * bar + e.tick % bar; // event at its linear bar
                     match e.part {
                         AP::Comp if parts.chords_on => {
                             if let Some((when, dur)) = self.place(abs, e.dur, start_tick) {
@@ -267,7 +300,6 @@ impl AudioEngine {
                         _ => {}
                     }
                 }
-                base += form;
             }
         }
         // Soonest last, so `pump` can pop the next note in O(1).
@@ -400,6 +432,24 @@ enum BusKind {
     Melody,
     Chords,
     Bass,
+}
+
+/// Map a 0-based linear performance bar to its 0-based chart bar over a total of
+/// `total_bars`: intro once at the start, ending once at the end, the chorus
+/// cycling to fill everything in between. This keeps the accompaniment aligned
+/// with the (expanded) melody length while playing the intro/ending only once.
+fn chart_bar0(lb: u32, cb: u32, ce: u32, total_bars: u32, form_bars: u32) -> u32 {
+    let intro = cb - 1;
+    let ending = form_bars.saturating_sub(ce);
+    let clen = (ce + 1 - cb).max(1);
+    let end_start = total_bars.saturating_sub(ending);
+    if lb < intro {
+        lb
+    } else if lb >= end_start && end_start >= intro {
+        (ce + (lb - end_start)).min(form_bars.saturating_sub(1))
+    } else {
+        intro + (lb - intro) % clen
+    }
 }
 
 /// (start_tick, dur_ticks, root_pc) for each visible chord, using the decoded
