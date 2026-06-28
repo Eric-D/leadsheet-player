@@ -673,8 +673,8 @@ impl eframe::App for App {
                 return;
             };
 
-            // Header metadata.
-            ui.horizontal_wrapped(|ui| {
+            // Header metadata, with the big metronome beat number on the right.
+            ui.horizontal(|ui| {
                 ui.heading(if song.title.is_empty() {
                     "(sans titre)"
                 } else {
@@ -691,6 +691,18 @@ impl eframe::App for App {
                     ))
                     .color(Color32::from_gray(110)),
                 );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let beats = 4u32;
+                    let beat = (current_tick / (TICKS_PER_BAR / beats)) % beats;
+                    let col = if !self.playing {
+                        Color32::from_gray(110)
+                    } else if beat == 0 {
+                        Color32::from_rgb(228, 55, 55) // downbeat = red
+                    } else {
+                        Color32::from_gray(220)
+                    };
+                    ui.label(RichText::new(format!("{}", beat + 1)).size(34.0).strong().color(col));
+                });
             });
             let structure = if song.form_bars > 0 {
                 let loop_part = if song.choruses > 1 {
@@ -744,21 +756,6 @@ impl eframe::App for App {
                         seek_tick = Some((f * total as f32) as u32);
                     }
                 }
-            }
-
-            // Big metronome beat number above the grid (red on the downbeat).
-            {
-                let beats = 4u32;
-                let unit = TICKS_PER_BAR / beats;
-                let beat = (current_tick / unit) % beats;
-                let col = if !self.playing {
-                    Color32::from_gray(110)
-                } else if beat == 0 {
-                    Color32::from_rgb(228, 55, 55)
-                } else {
-                    Color32::from_gray(220)
-                };
-                ui.label(RichText::new(format!("{}", beat + 1)).size(40.0).strong().color(col));
             }
             ui.add_space(4.0);
 
