@@ -649,28 +649,31 @@ impl eframe::App for App {
             }
             v
         };
-        let mut lib_open = self.show_library;
+        if self.show_library {
         egui::Window::new("📚 Bibliothèque")
-            .open(&mut lib_open)
             .collapsible(false)
             .resizable(false)
             .fixed_size([ctx.screen_rect().width(), ctx.screen_rect().height()])
             .anchor(egui::Align2::LEFT_TOP, [0.0, 0.0])
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    // On phones the title-bar ✕ sits in the rounded corner and is
-                    // hard to tap, so offer a Fermer button there. On desktop the
-                    // ✕ is fine — don't duplicate it.
-                    if ui.ctx().screen_rect().width() < 600.0
-                        && ui.add(egui::Button::new(RichText::new("Fermer").size(16.0))).clicked()
-                    {
-                        close_lib = true;
-                    }
                     ui.label(
                         RichText::new("Stockée dans ce navigateur (hors-ligne).")
                             .small()
                             .color(Color32::from_gray(140)),
                     );
+                    // Single close affordance, kept off the rounded corner
+                    // (inset from the right edge so it's easy to tap).
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_space(10.0);
+                        if ui
+                            .add(egui::Button::new(RichText::new("×").size(24.0)))
+                            .on_hover_text("Fermer")
+                            .clicked()
+                        {
+                            close_lib = true;
+                        }
+                    });
                 });
 
                 // Add the currently-loaded song; download the whole library.
@@ -841,7 +844,10 @@ impl eframe::App for App {
                     }
                 });
             });
-        self.show_library = lib_open && !close_lib;
+        }
+        if close_lib {
+            self.show_library = false;
+        }
         if do_add {
             if let (Some(bytes), Some(song)) = (&self.current_bytes, &self.song) {
                 let key = format!(
