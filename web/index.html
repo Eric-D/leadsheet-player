@@ -77,9 +77,17 @@
       }
     </script>
     <script>
+      // Channel-isolated storage: the dev channel is served under /dev/, so it
+      // gets its own IndexedDB database and localStorage keys (no clobbering the
+      // stable library / cloud config, even though it's the same origin).
+      window.__DEV = location.pathname.indexOf("/dev/") !== -1;
+      window.__DB = window.__DEV ? "biab-dev" : "biab";
+      window.__CFGKEY = window.__DEV ? "cloudCfg-dev" : "cloudCfg";
+    </script>
+    <script>
       // Local song library backed by IndexedDB — no server, fully offline.
       (function () {
-        const DB = "biab", STORE = "songs";
+        const DB = window.__DB, STORE = "songs";
         function open() {
           return new Promise((res, rej) => {
             const r = indexedDB.open(DB, 1);
@@ -209,7 +217,7 @@
         return new Blob(parts.concat(central, [new Uint8Array(end.buffer)]), { type: "application/zip" });
       }
       window.downloadAllZip = function () {
-        var DB = "biab", STORE = "songs";
+        var DB = window.__DB, STORE = "songs";
         var req = indexedDB.open(DB, 1);
         req.onsuccess = function () {
           var db = req.result, out = [], seen = {};
@@ -235,7 +243,7 @@
       // keyed by the space key, stored in the user's own Supabase. The local
       // IndexedDB library is the working copy / offline cache.
       (function () {
-        const DB = "biab", STORE = "songs";
+        const DB = window.__DB, STORE = "songs";
         function open() {
           return new Promise((res, rej) => {
             const r = indexedDB.open(DB, 1);
@@ -292,8 +300,8 @@
         };
         // Config persistence (localStorage) — stored as a JSON string.
         window.cloudCfg = {
-          load: function () { return localStorage.getItem("cloudCfg") || ""; },
-          save: function (s) { try { localStorage.setItem("cloudCfg", s); } catch (e) {} },
+          load: function () { return localStorage.getItem(window.__CFGKEY) || ""; },
+          save: function (s) { try { localStorage.setItem(window.__CFGKEY, s); } catch (e) {} },
         };
       })();
     </script>
