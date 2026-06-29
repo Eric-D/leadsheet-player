@@ -22,6 +22,6 @@ js-sys = "0.3"
 console_error_panic_hook = "0.1"
 qrcode = { version = "0.14", default-features = false }
 web-sys = { version = "0.3", features = [
-    "Window", "Document", "Location", "Crypto", "AudioContext", "AudioContextState", "BaseAudioContext",
+    "Window", "Document", "Location", "Crypto", "EventTarget", "AudioContext", "AudioContextState", "BaseAudioContext",
     "AudioDestinationNode", "AudioNode", "AudioParam", "GainNode", "OscillatorNode", "OscillatorType",
 ] }

@@ -127,6 +127,19 @@ pub fn sync_pull(c: Config, status: StatusInbox, lib_inbox: crate::library::LibI
     });
 }
 
+/// Watch for `#c=` changes (e.g. the PWA is re-launched on a new scan while
+/// already open): set the flag and repaint so the app re-applies the config.
+pub fn watch_hash(ctx: egui::Context, flag: Rc<std::cell::Cell<bool>>) {
+    let cb = Closure::<dyn FnMut()>::new(move || {
+        flag.set(true);
+        ctx.request_repaint();
+    });
+    if let Some(w) = web_sys::window() {
+        let _ = w.add_event_listener_with_callback("hashchange", cb.as_ref().unchecked_ref());
+    }
+    cb.forget(); // lives for the page lifetime
+}
+
 /// A short random space key.
 pub fn random_key() -> String {
     let mut buf = [0u8; 12];

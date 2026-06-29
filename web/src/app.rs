@@ -52,6 +52,8 @@ pub struct App {
     cloud_status: String,
     cloud_inbox: cloud::StatusInbox,
     cloud_loaded: bool,
+    /// Set by the hashchange listener so a re-scan re-applies the config.
+    cfg_dirty: Rc<std::cell::Cell<bool>>,
     show_qr: bool,
     show_library: bool,
     library: Vec<LibEntry>,
@@ -99,6 +101,7 @@ impl App {
             cloud_status: String::new(),
             cloud_inbox: Rc::new(RefCell::new(None)),
             cloud_loaded: false,
+            cfg_dirty: Rc::new(std::cell::Cell::new(false)),
             show_qr: false,
             show_library: false,
             library: Vec::new(),
@@ -414,6 +417,11 @@ impl eframe::App for App {
         if !self.cloud_loaded {
             self.cloud_loaded = true;
             self.cloud = cloud::load_config();
+            cloud::watch_hash(ctx.clone(), self.cfg_dirty.clone());
+            self.cfg_dirty.set(true); // apply any `#c=` already in the URL
+        }
+        // Re-apply the config when the URL fragment changes (re-scan while open).
+        if self.cfg_dirty.replace(false) {
             if let Some(c) = cloud::config_in_url() {
                 self.cloud = c.clone();
                 cloud::save_config(&c);
