@@ -151,6 +151,20 @@
         window.__pickedFile = null;
         return p;
       };
+      // Save bytes to a file (re-download a library song).
+      window.downloadFile = function (name, bytes) {
+        var blob = new Blob([bytes], { type: "application/octet-stream" });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = name || "morceau.MGU";
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function () {
+          URL.revokeObjectURL(url);
+          try { document.body.removeChild(a); } catch (e) {}
+        }, 1000);
+      };
     </script>
     <script>
       // Cloud "space": the QR/URL carries the whole config (Supabase URL + anon

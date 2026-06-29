@@ -678,6 +678,18 @@ impl eframe::App for App {
                 {
                     do_add = true;
                 }
+                // Drop-zone hint (the drop itself is handled globally), lit up
+                // while files are dragged over the page.
+                let hovering = ctx.input(|i| !i.raw.hovered_files.is_empty());
+                let hint = if hovering {
+                    RichText::new("⬇ Déposez pour ajouter à la bibliothèque").strong().color(Color32::from_rgb(228, 55, 55))
+                } else {
+                    RichText::new("Astuce : glissez-déposez des fichiers .MGU ici pour les ajouter.")
+                        .small()
+                        .italics()
+                        .color(Color32::from_gray(150))
+                };
+                ui.label(hint);
                 ui.add_space(2.0);
 
                 // ☁ Shared space (Supabase) — the QR/link carries the whole
@@ -782,12 +794,20 @@ impl eframe::App for App {
                                 _ => {
                                     // Edit/delete pinned right; title + meta fill the middle.
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        ui.add_space(10.0); // keep 🗑/✏ off the rounded right edge
+                                        ui.add_space(10.0); // keep icons off the rounded right edge
                                         if ui.button("🗑").on_hover_text("Supprimer").clicked() {
                                             del_lib = Some(e.id);
                                         }
                                         if ui.button("✏").on_hover_text("Renommer").clicked() {
                                             start_rename = Some((e.id, title.clone()));
+                                        }
+                                        if ui.button("⬇").on_hover_text("Télécharger le fichier").clicked() {
+                                            let fname = if e.name.is_empty() {
+                                                format!("{title}.MGU")
+                                            } else {
+                                                e.name.clone()
+                                            };
+                                            library::download(e.id, fname);
                                         }
                                         ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                                             ui.label(RichText::new(title).strong());

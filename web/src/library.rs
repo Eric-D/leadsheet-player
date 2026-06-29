@@ -36,6 +36,8 @@ extern "C" {
     async fn remove(id: f64) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch, js_namespace = localLib)]
     async fn rename(id: f64, title: &str) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(js_name = downloadFile)]
+    fn download_file(name: &str, bytes: &[u8]);
 }
 
 /// True if the IndexedDB-backed library glue is present (always, in our build).
@@ -86,6 +88,18 @@ pub fn load(id: f64, name: String, into: BytesInbox, ctx: egui::Context) {
             if !bytes.is_empty() {
                 *into.borrow_mut() = Some((name, bytes));
                 ctx.request_repaint();
+            }
+        }
+    });
+}
+
+/// Fetch a song's bytes by id and trigger a browser download.
+pub fn download(id: f64, name: String) {
+    wasm_bindgen_futures::spawn_local(async move {
+        if let Ok(v) = get(id).await {
+            let bytes = js_sys::Uint8Array::new(&v).to_vec();
+            if !bytes.is_empty() {
+                download_file(&name, &bytes);
             }
         }
     });
