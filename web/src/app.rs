@@ -627,7 +627,6 @@ impl eframe::App for App {
         let mut start_rename: Option<(f64, String)> = None;
         let (mut cl_save, mut cl_pull, mut cl_push, mut cl_newkey) = (false, false, false, false);
         let mut do_add = false;
-        let mut close_lib = false;
         // Filtered + sorted snapshot, so the closure doesn't borrow self.library.
         let view: Vec<LibEntry> = {
             let q = self.library_search.to_lowercase();
@@ -649,32 +648,23 @@ impl eframe::App for App {
             }
             v
         };
-        if self.show_library {
+        let mut lib_open = self.show_library;
         egui::Window::new("📚 Bibliothèque")
+            .open(&mut lib_open)
             .collapsible(false)
             .resizable(false)
-            .fixed_size([ctx.screen_rect().width(), ctx.screen_rect().height()])
-            .anchor(egui::Align2::LEFT_TOP, [0.0, 0.0])
+            // Inset top+right so the native close ✕ leaves the rounded corner.
+            .fixed_size([
+                ctx.screen_rect().width() - 16.0,
+                ctx.screen_rect().height() - 10.0,
+            ])
+            .anchor(egui::Align2::LEFT_TOP, [0.0, 10.0])
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new("Stockée dans ce navigateur (hors-ligne).")
-                            .small()
-                            .color(Color32::from_gray(140)),
-                    );
-                    // Single close affordance, kept off the rounded corner
-                    // (inset from the right edge so it's easy to tap).
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add_space(10.0);
-                        if ui
-                            .add(egui::Button::new(RichText::new("×").size(24.0)))
-                            .on_hover_text("Fermer")
-                            .clicked()
-                        {
-                            close_lib = true;
-                        }
-                    });
-                });
+                ui.label(
+                    RichText::new("Stockée dans ce navigateur (hors-ligne).")
+                        .small()
+                        .color(Color32::from_gray(140)),
+                );
 
                 // Add the currently-loaded song; download the whole library.
                 ui.horizontal_wrapped(|ui| {
@@ -844,10 +834,7 @@ impl eframe::App for App {
                     }
                 });
             });
-        }
-        if close_lib {
-            self.show_library = false;
-        }
+        self.show_library = lib_open;
         if do_add {
             if let (Some(bytes), Some(song)) = (&self.current_bytes, &self.song) {
                 let key = format!(
