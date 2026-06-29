@@ -5,6 +5,8 @@
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
+  "launch_handler": { "client_mode": ["navigate-existing", "auto"] },
+  "handle_links": "preferred",
   "background_color": "#1b1b20",
   "theme_color": "#1b1b20",
   "icons": [
