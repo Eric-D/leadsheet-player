@@ -1,8 +1,13 @@
 name: Deploy to GitHub Pages
 
+# Two channels in one Pages site:
+#   - stable (release) from `main` -> /<repo>/
+#   - dev                from `dev`  -> /<repo>/dev/
+# Every push (to either branch) rebuilds BOTH from their current branch state,
+# because the Pages artifact replaces the whole site on each deploy.
 on:
   push:
-    branches: [main, master]
+    branches: [main, dev]
   workflow_dispatch:
 
 permissions:
@@ -10,7 +15,6 @@ permissions:
   pages: write
   id-token: write
 
-# Allow one concurrent deployment; newer pushes cancel in-progress ones.
 concurrency:
   group: pages
   cancel-in-progress: true
@@ -19,7 +23,17 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout stable (main)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: stable
+
+      - name: Checkout dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          path: dev
 
       - name: Add wasm target
         run: rustup target add wasm32-unknown-unknown
@@ -30,7 +44,6 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
 
       - name: Install trunk
@@ -38,16 +51,26 @@ jobs:
         with:
           version: latest
 
-      - name: Build (public URL = the project's Pages sub-path)
+      - name: Build stable -> /<repo>/
         run: |
-          cd web
-          export BUILD_INFO="$(date -u +%Y-%m-%d\ %H:%M) ${GITHUB_SHA:0:7}"
-          trunk build --release --public-url "/${GITHUB_REPOSITORY#*/}/"
-          touch dist/.nojekyll
+          SHA=$(git -C stable rev-parse --short HEAD)
+          cd stable/web
+          export BUILD_INFO="$(date -u +%Y-%m-%d\ %H:%M) ${SHA} (release)"
+          trunk build --release --public-url "/${GITHUB_REPOSITORY#*/}/" --dist "$GITHUB_WORKSPACE/_site"
+
+      - name: Build dev -> /<repo>/dev/
+        run: |
+          SHA=$(git -C dev rev-parse --short HEAD)
+          cd dev/web
+          export BUILD_INFO="$(date -u +%Y-%m-%d\ %H:%M) ${SHA} (dev)"
+          trunk build --release --public-url "/${GITHUB_REPOSITORY#*/}/dev/" --dist "$GITHUB_WORKSPACE/_site/dev"
+
+      - name: No Jekyll
+        run: touch "$GITHUB_WORKSPACE/_site/.nojekyll"
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: web/dist
+          path: _site
 
   deploy:
     needs: build
