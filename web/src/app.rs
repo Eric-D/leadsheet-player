@@ -657,10 +657,13 @@ impl eframe::App for App {
             .fixed_size([ctx.screen_rect().width(), ctx.screen_rect().height()])
             .anchor(egui::Align2::LEFT_TOP, [0.0, 0.0])
             .show(ctx, |ui| {
-                // Easy-to-reach close button (the title-bar ✕ in the rounded
-                // corner is hard to tap on phones).
                 ui.horizontal(|ui| {
-                    if ui.add(egui::Button::new(RichText::new("✕ Fermer").size(16.0))).clicked() {
+                    // On phones the title-bar ✕ sits in the rounded corner and is
+                    // hard to tap, so offer a Fermer button there. On desktop the
+                    // ✕ is fine — don't duplicate it.
+                    if ui.ctx().screen_rect().width() < 600.0
+                        && ui.add(egui::Button::new(RichText::new("Fermer").size(16.0))).clicked()
+                    {
                         close_lib = true;
                     }
                     ui.label(
