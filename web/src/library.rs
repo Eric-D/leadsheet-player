@@ -38,6 +38,13 @@ extern "C" {
     async fn rename(id: f64, title: &str) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(js_name = downloadFile)]
     fn download_file(name: &str, bytes: &[u8]);
+    #[wasm_bindgen(js_name = downloadAllZip)]
+    fn download_all_zip();
+}
+
+/// Download the whole library as a single ZIP.
+pub fn download_all() {
+    download_all_zip();
 }
 
 /// True if the IndexedDB-backed library glue is present (always, in our build).

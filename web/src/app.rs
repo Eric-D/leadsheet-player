@@ -670,14 +670,22 @@ impl eframe::App for App {
                     );
                 });
 
-                // Add the currently-loaded song to the library.
-                let can_add = self.current_bytes.is_some() && self.song.is_some();
-                if ui
-                    .add_enabled(can_add, egui::Button::new("💾 Ajouter le morceau courant"))
-                    .clicked()
-                {
-                    do_add = true;
-                }
+                // Add the currently-loaded song; download the whole library.
+                ui.horizontal_wrapped(|ui| {
+                    let can_add = self.current_bytes.is_some() && self.song.is_some();
+                    if ui
+                        .add_enabled(can_add, egui::Button::new("💾 Ajouter le morceau courant"))
+                        .clicked()
+                    {
+                        do_add = true;
+                    }
+                    if ui
+                        .add_enabled(!self.library.is_empty(), egui::Button::new("⬇ Tout télécharger (zip)"))
+                        .clicked()
+                    {
+                        library::download_all();
+                    }
+                });
                 // Drop-zone hint (the drop itself is handled globally), lit up
                 // while files are dragged over the page.
                 let hovering = ctx.input(|i| !i.raw.hovered_files.is_empty());

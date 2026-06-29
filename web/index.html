@@ -151,19 +151,82 @@
         window.__pickedFile = null;
         return p;
       };
-      // Save bytes to a file (re-download a library song).
-      window.downloadFile = function (name, bytes) {
-        var blob = new Blob([bytes], { type: "application/octet-stream" });
+      function doDownload(blob, name) {
         var url = URL.createObjectURL(blob);
         var a = document.createElement("a");
         a.href = url;
-        a.download = name || "morceau.MGU";
+        a.download = name;
         document.body.appendChild(a);
         a.click();
         setTimeout(function () {
           URL.revokeObjectURL(url);
           try { document.body.removeChild(a); } catch (e) {}
         }, 1000);
+      }
+      // Save bytes to a file (re-download a library song).
+      window.downloadFile = function (name, bytes) {
+        doDownload(new Blob([bytes], { type: "application/octet-stream" }), name || "morceau.MGU");
+      };
+
+      // Download the whole library as one ZIP (store-only, no external lib).
+      function crc32(buf) {
+        var t = crc32.t;
+        if (!t) {
+          t = crc32.t = [];
+          for (var n = 0; n < 256; n++) {
+            var c = n;
+            for (var k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+            t[n] = c >>> 0;
+          }
+        }
+        var crc = 0xffffffff;
+        for (var i = 0; i < buf.length; i++) crc = (crc >>> 8) ^ t[(crc ^ buf[i]) & 0xff];
+        return (crc ^ 0xffffffff) >>> 0;
+      }
+      function buildZip(files) {
+        var enc = new TextEncoder(), parts = [], central = [], offset = 0, n = 0;
+        files.forEach(function (f) {
+          var nm = enc.encode(f.name), data = f.data, crc = crc32(data);
+          var lh = new DataView(new ArrayBuffer(30));
+          lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true);
+          lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true);
+          lh.setUint32(22, data.length, true); lh.setUint16(26, nm.length, true);
+          parts.push(new Uint8Array(lh.buffer), nm, data);
+          var ch = new DataView(new ArrayBuffer(46));
+          ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true);
+          ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true);
+          ch.setUint32(24, data.length, true); ch.setUint16(28, nm.length, true);
+          ch.setUint32(42, offset, true);
+          central.push(new Uint8Array(ch.buffer), nm);
+          offset += 30 + nm.length + data.length; n++;
+        });
+        var cstart = offset, csize = 0;
+        central.forEach(function (c) { csize += c.length; });
+        var end = new DataView(new ArrayBuffer(22));
+        end.setUint32(0, 0x06054b50, true);
+        end.setUint16(8, n, true); end.setUint16(10, n, true);
+        end.setUint32(12, csize, true); end.setUint32(16, cstart, true);
+        return new Blob(parts.concat(central, [new Uint8Array(end.buffer)]), { type: "application/zip" });
+      }
+      window.downloadAllZip = function () {
+        var DB = "biab", STORE = "songs";
+        var req = indexedDB.open(DB, 1);
+        req.onsuccess = function () {
+          var db = req.result, out = [], seen = {};
+          var c = db.transaction(STORE, "readonly").objectStore(STORE).openCursor();
+          c.onsuccess = function () {
+            var cur = c.result;
+            if (cur) {
+              var v = cur.value;
+              var name = v.name || ((v.title || "morceau") + ".MGU");
+              if (seen[name]) name = seen[name]++ + "_" + name; else seen[name] = 1;
+              out.push({ name: name, data: v.bytes instanceof Uint8Array ? v.bytes : new Uint8Array(v.bytes) });
+              cur.continue();
+            } else if (out.length) {
+              doDownload(buildZip(out), "bibliotheque.zip");
+            }
+          };
+        };
       };
     </script>
     <script>
