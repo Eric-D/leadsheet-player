@@ -57,6 +57,8 @@ pub struct App {
     library: Vec<LibEntry>,
     library_inbox: LibInbox,
     library_loaded: bool,
+    /// Open the library once on first load if it has songs (landing page).
+    library_autoshown: bool,
     library_search: String,
     library_sort_tempo: bool,
     /// (id, edit buffer) when renaming a library entry.
@@ -102,6 +104,7 @@ impl App {
             library: Vec::new(),
             library_inbox: Rc::new(RefCell::new(None)),
             library_loaded: false,
+            library_autoshown: false,
             library_search: String::new(),
             library_sort_tempo: false,
             renaming: None,
@@ -397,6 +400,13 @@ impl eframe::App for App {
         }
         if let Some(list) = self.library_inbox.borrow_mut().take() {
             self.library = list;
+            // First load: if there are songs, open the library as the landing page.
+            if !self.library_autoshown {
+                self.library_autoshown = true;
+                if !self.library.is_empty() {
+                    self.show_library = true;
+                }
+            }
         }
 
         // Cloud space: load saved config once; if the page was opened with a
