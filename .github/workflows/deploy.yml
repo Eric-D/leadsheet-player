@@ -1,13 +1,13 @@
 name: Deploy to GitHub Pages
 
 # Two channels in one Pages site:
-#   - stable (release) from `main` -> /<repo>/
-#   - dev                from `dev`  -> /<repo>/dev/
+#   - stable (release) from `release` -> /<repo>/
+#   - dev                from `main`    -> /<repo>/dev/
 # Every push (to either branch) rebuilds BOTH from their current branch state,
 # because the Pages artifact replaces the whole site on each deploy.
 on:
   push:
-    branches: [main, dev]
+    branches: [main, release]
   workflow_dispatch:
 
 permissions:
@@ -23,16 +23,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout stable (main)
+      - name: Checkout stable (release)
+        uses: actions/checkout@v4
+        with:
+          ref: release
+          path: stable
+
+      - name: Checkout dev (main)
         uses: actions/checkout@v4
         with:
           ref: main
-          path: stable
-
-      - name: Checkout dev
-        uses: actions/checkout@v4
-        with:
-          ref: dev
           path: dev
 
       - name: Add wasm target
