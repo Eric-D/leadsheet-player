@@ -297,7 +297,7 @@ impl AudioEngine {
             }
 
             for lb in 0..total_bars {
-                let cbar = chart_bar0(lb, cb, ce, total_bars, form_bars);
+                let cbar = chart_bar0(lb, cb, ce, choruses, form_bars);
                 let Some(idxs) = by_bar.get(cbar as usize) else { continue };
                 for &i in idxs {
                     let e = &events[i];
@@ -460,21 +460,24 @@ enum BusKind {
     Bass,
 }
 
-/// Map a 0-based linear performance bar to its 0-based chart bar over a total of
-/// `total_bars`: intro once at the start, ending once at the end, the chorus
-/// cycling to fill everything in between. This keeps the accompaniment aligned
-/// with the (expanded) melody length while playing the intro/ending only once.
-fn chart_bar0(lb: u32, cb: u32, ce: u32, total_bars: u32, form_bars: u32) -> u32 {
+/// Map a 0-based linear performance bar to its 0-based chart bar: intro once,
+/// then the chorus cycled EXACTLY `choruses` times, then the ending. This must
+/// match the display's `chart_bar` (app.rs) bar-for-bar, otherwise the (raw,
+/// expanded) melody and the (reconstructed) accompaniment drift apart. It does
+/// NOT key off the melody length: a melody whose last note rings a few bars past
+/// the form must not make the accompaniment loop the chorus an extra time.
+fn chart_bar0(lb: u32, cb: u32, ce: u32, choruses: u32, form_bars: u32) -> u32 {
     let intro = cb - 1;
-    let ending = form_bars.saturating_sub(ce);
     let clen = (ce + 1 - cb).max(1);
-    let end_start = total_bars.saturating_sub(ending);
     if lb < intro {
-        lb
-    } else if lb >= end_start && end_start >= intro {
-        (ce + (lb - end_start)).min(form_bars.saturating_sub(1))
+        return lb;
+    }
+    let after = lb - intro;
+    let total_chorus = clen * choruses;
+    if after < total_chorus {
+        intro + after % clen
     } else {
-        intro + (lb - intro) % clen
+        (ce + (after - total_chorus)).min(form_bars.saturating_sub(1))
     }
 }
 
