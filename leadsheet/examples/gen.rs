@@ -41,7 +41,26 @@ fn note(beat: u32, pitch: u8) -> Note {
 }
 
 fn main() {
-    // Bundled demo: an original I–vi–IV–V7 in C, two parts, a simple melody.
+    // A singable melody: 4 quarter-notes per bar outlining each chord, so the
+    // demo doesn't sound sparse/slow. One 8-bar phrase, expanded over 2 choruses.
+    let phrase: [[u8; 4]; 8] = [
+        [60, 64, 67, 64], // C  : C E G E
+        [57, 60, 64, 60], // Am : A C E C
+        [65, 69, 72, 69], // F  : F A C A
+        [67, 71, 74, 71], // G7 : G B D B
+        [64, 67, 72, 67], // C  : E G C G
+        [60, 64, 69, 64], // Am : C E A E
+        [69, 72, 77, 72], // F  : A C F C
+        [74, 71, 67, 67], // G7 : D B G G -> back to C
+    ];
+    let melody: Vec<Note> = (0..16u32)
+        .flat_map(|b| {
+            let bar = phrase[(b % 8) as usize];
+            (0..4u32).map(move |beat| note(b * 4 + beat, bar[beat as usize]))
+        })
+        .collect();
+
+    // Bundled demo: an original I–vi–IV–V7 in C, two parts, the melody above.
     let demo = build(
         "Démo libre", 0, false, 100,
         vec![
@@ -56,8 +75,7 @@ fn main() {
         ],
         vec![(1, 1), (5, 2)],
         (1, 8, 2),
-        // Melody expanded over the 2 choruses (16 bars) so playback repeats too.
-        (0..16).map(|b| note(b * 4, [60, 64, 65, 67, 60, 64, 65, 67][(b % 8) as usize])).collect(),
+        melody,
     );
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     std::fs::write(root.join("web/demo.mgu"), encode(&demo)).unwrap();
