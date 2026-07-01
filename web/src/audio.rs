@@ -65,6 +65,9 @@ impl Default for Parts {
 pub struct AudioEngine {
     ctx: AudioContext,
     master: GainNode,
+    /// Brick-wall-ish limiter on the output so the louder levels never clip when
+    /// notes stack. Kept alive by this field.
+    _limiter: web_sys::DynamicsCompressorNode,
     mel_bus: GainNode,
     chd_bus: GainNode,
     bas_bus: GainNode,
@@ -123,7 +126,16 @@ impl AudioEngine {
         }
         let master = ctx.create_gain().ok()?;
         master.gain().set_value(0.9);
-        master.connect_with_audio_node(&ctx.destination()).ok()?;
+        // master -> limiter -> speakers. The limiter (fast compressor at a high
+        // ratio) lets us run hotter without clipping when many notes overlap.
+        let limiter = ctx.create_dynamics_compressor().ok()?;
+        limiter.threshold().set_value(-6.0);
+        limiter.knee().set_value(0.0);
+        limiter.ratio().set_value(20.0);
+        limiter.attack().set_value(0.003);
+        limiter.release().set_value(0.25);
+        master.connect_with_audio_node(&limiter).ok()?;
+        limiter.connect_with_audio_node(&ctx.destination()).ok()?;
         let mk_bus = || -> Option<GainNode> {
             let b = ctx.create_gain().ok()?;
             b.gain().set_value(1.0);
@@ -136,6 +148,7 @@ impl AudioEngine {
         Some(Self {
             ctx,
             master,
+            _limiter: limiter,
             mel_bus,
             chd_bus,
             bas_bus,
@@ -252,7 +265,7 @@ impl AudioEngine {
             let instr = PRESETS[parts.melody_instr.min(PRESETS.len() - 1)];
             for n in &song.melody {
                 if let Some((when, dur)) = self.place(n.tick, n.dur, start_tick) {
-                    let peak = 0.18 + (n.vel as f32 / 127.0) * 0.12;
+                    let peak = 0.30 + (n.vel as f32 / 127.0) * 0.18;
                     self.pending.push(PendingNote { bus: BusKind::Melody, pitch: n.pitch, when, dur, peak, instr });
                 }
             }
@@ -305,12 +318,12 @@ impl AudioEngine {
                     match e.part {
                         AP::Comp if parts.chords_on => {
                             if let Some((when, dur)) = self.place(abs, e.dur, start_tick) {
-                                self.pending.push(PendingNote { bus: BusKind::Chords, pitch: e.pitch, when, dur: dur.min(2.0), peak: 0.06, instr: chord_i });
+                                self.pending.push(PendingNote { bus: BusKind::Chords, pitch: e.pitch, when, dur: dur.min(2.0), peak: 0.10, instr: chord_i });
                             }
                         }
                         AP::Bass if parts.bass_on => {
                             if let Some((when, dur)) = self.place(abs, e.dur, start_tick) {
-                                self.pending.push(PendingNote { bus: BusKind::Bass, pitch: e.pitch, when, dur: dur.min(1.2), peak: 0.13, instr: bass_i });
+                                self.pending.push(PendingNote { bus: BusKind::Bass, pitch: e.pitch, when, dur: dur.min(1.2), peak: 0.20, instr: bass_i });
                             }
                         }
                         _ => {}

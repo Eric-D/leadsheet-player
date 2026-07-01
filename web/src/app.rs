@@ -321,11 +321,11 @@ fn chord_root_minor(c: &parser::Chord) -> (u8, bool) {
     (c.root, suffix.starts_with('m'))
 }
 
-/// A compact labelled volume knob (0–150 %). Returns true if it changed.
+/// A compact labelled volume knob (0–200 %). Returns true if it changed.
 fn volume_slider(ui: &mut egui::Ui, label: &str, v: &mut f32) -> bool {
     let mut pct = *v * 100.0;
     let resp = ui.add(
-        egui::Slider::new(&mut pct, 0.0..=150.0)
+        egui::Slider::new(&mut pct, 0.0..=200.0)
             .text(label)
             .fixed_decimals(0)
             .suffix(" %"),
