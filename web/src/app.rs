@@ -321,17 +321,25 @@ fn chord_root_minor(c: &parser::Chord) -> (u8, bool) {
     (c.root, suffix.starts_with('m'))
 }
 
-/// A compact labelled volume knob (0–200 %). Returns true if it changed.
+/// A labelled volume knob on a dB scale (−∞ … +6 dB, 0 dB = unity gain) — this
+/// tracks the ear far better than a linear %. Stores the LINEAR gain in `*v`.
+/// Returns true if it changed.
 fn volume_slider(ui: &mut egui::Ui, label: &str, v: &mut f32) -> bool {
-    let mut pct = *v * 100.0;
+    const FLOOR: f32 = -48.0; // slider bottom = mute (−∞)
+    let mut db = if *v <= 0.0001 { FLOOR } else { (20.0 * v.log10()).clamp(FLOOR, 6.0) };
     let resp = ui.add(
-        egui::Slider::new(&mut pct, 0.0..=200.0)
+        egui::Slider::new(&mut db, FLOOR..=6.0)
             .text(label)
-            .fixed_decimals(0)
-            .suffix(" %"),
+            .custom_formatter(|d, _| {
+                if d <= FLOOR as f64 {
+                    "−∞".to_owned()
+                } else {
+                    format!("{d:+.0} dB")
+                }
+            }),
     );
     if resp.changed() {
-        *v = pct / 100.0;
+        *v = if db <= FLOOR { 0.0 } else { 10f32.powf(db / 20.0) };
         true
     } else {
         false
